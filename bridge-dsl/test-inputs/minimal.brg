@@ -1,7 +1,10 @@
 bridge ProductBridge {
-
     source MongoDB {
         collection "products"
     }
-    
+
+    target DynamoDB {
+        table "Products"
+        partitionKey "id"
+    }
 }

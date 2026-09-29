@@ -3,11 +3,18 @@ grammar Bridge
 entry BridgeModel:
     'bridge' name=ID '{'
         source=Source
+        target=Target
     '}'
 ;
 
 Source:
     'source' technology=ID '{'
+        properties+=ConfigProperty*
+    '}'
+;
+
+Target:
+    'target' technology=ID '{'
         properties+=ConfigProperty*
     '}'
 ;

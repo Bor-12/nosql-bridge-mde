@@ -7,9 +7,15 @@ interface SourcePlan {
     [key: string]: string;
 }
 
+interface TargetPlan {
+    technology: string;
+    [key: string]: string;
+}
+
 interface BridgeExecutionPlan {
     bridgeName: string;
     source: SourcePlan;
+    target: TargetPlan;
 }
 
 function createSourcePlan(model: BridgeModel): SourcePlan {
@@ -24,10 +30,23 @@ function createSourcePlan(model: BridgeModel): SourcePlan {
     return sourcePlan;
 }
 
+function createTargetPlan(model: BridgeModel): TargetPlan {
+    const targetPlan: TargetPlan = {
+        technology: model.target.technology.toLowerCase()
+    };
+
+    for (const property of model.target.properties) {
+        targetPlan[property.name] = property.value;
+    }
+
+    return targetPlan;
+}
+
 function createExecutionPlan(model: BridgeModel): BridgeExecutionPlan {
     return {
         bridgeName: model.name,
-        source: createSourcePlan(model)
+        source: createSourcePlan(model),
+        target: createTargetPlan(model)
     };
 }
 

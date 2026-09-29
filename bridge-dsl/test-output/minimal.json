@@ -3,5 +3,10 @@
   "source": {
     "technology": "mongodb",
     "collection": "products"
+  },
+  "target": {
+    "technology": "dynamodb",
+    "table": "Products",
+    "partitionKey": "id"
   }
 }
