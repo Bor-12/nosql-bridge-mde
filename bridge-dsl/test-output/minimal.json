@@ -1,3 +1,7 @@
 {
-  "bridgeName": "ProductBridge"
+  "bridgeName": "ProductBridge",
+  "source": {
+    "technology": "mongodb",
+    "collection": "products"
+  }
 }

@@ -1,1 +1,7 @@
-bridge ProductBridge
+bridge ProductBridge {
+
+    source MongoDB {
+        collection "products"
+    }
+    
+}

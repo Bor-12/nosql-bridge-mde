@@ -1,7 +1,19 @@
 grammar Bridge
 
 entry BridgeModel:
-    'bridge' name=ID
+    'bridge' name=ID '{'
+        source=Source
+    '}'
+;
+
+Source:
+    'source' technology=ID '{'
+        properties+=ConfigProperty*
+    '}'
+;
+
+ConfigProperty:
+    name=ID value=STRING
 ;
 
 hidden terminal WS: /\s+/;
