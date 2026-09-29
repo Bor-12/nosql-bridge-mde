@@ -1,0 +1,16 @@
+{
+    "projectName": "Bridge",
+    "languages": [
+        {
+            "id": "bridge",
+            "grammar": "src/bridge.langium",
+            "fileExtensions": [
+                ".brg"
+            ],
+            "textMate": {
+                "out": "syntaxes/bridge.tmLanguage.json"
+            }
+        }
+    ],
+    "out": "src/generated"
+}
