@@ -1,0 +1,17 @@
+bridge ProductNullHandlingBridge {
+
+    source MongoDB {
+        collection "products"
+    }
+
+    target DynamoDB {
+        table "Products"
+        partitionKey "id"
+    }
+
+    mapping {
+        _id    -> id
+        name   -> name
+        status -> status default "ACTIVE"
+    }
+}

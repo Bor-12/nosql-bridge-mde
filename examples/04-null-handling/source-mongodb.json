@@ -1,0 +1,11 @@
+[
+  {
+    "_id": "product-004",
+    "name": "Mouse"
+  },
+  {
+    "_id": "product-005",
+    "name": "Keyboard",
+    "status": null
+  }
+]

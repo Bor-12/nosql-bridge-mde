@@ -1,0 +1,27 @@
+{
+  "bridgeName": "ProductNullHandlingBridge",
+  "source": {
+    "technology": "mongodb",
+    "collection": "products"
+  },
+  "target": {
+    "technology": "dynamodb",
+    "table": "Products",
+    "partitionKey": "id"
+  },
+  "mappings": [
+    {
+      "source": "_id",
+      "target": "id"
+    },
+    {
+      "source": "name",
+      "target": "name"
+    },
+    {
+      "source": "status",
+      "target": "status",
+      "default": "ACTIVE"
+    }
+  ]
+}

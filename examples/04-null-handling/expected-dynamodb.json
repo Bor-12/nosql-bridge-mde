@@ -1,0 +1,12 @@
+[
+  {
+    "id": "product-004",
+    "name": "Mouse",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "product-005",
+    "name": "Keyboard",
+    "status": "ACTIVE"
+  }
+]
