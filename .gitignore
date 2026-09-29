@@ -4,9 +4,11 @@
 
 
 node_modules
+out
 dist
 build
-
+coverage
+*.log
 
 target
 *.class
@@ -15,3 +17,4 @@ target
 .env
 .env.*
 
+/TFG_CONTEXT.md
