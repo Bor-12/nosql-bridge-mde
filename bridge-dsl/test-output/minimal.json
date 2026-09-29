@@ -8,5 +8,23 @@
     "technology": "dynamodb",
     "table": "Products",
     "partitionKey": "id"
-  }
+  },
+  "mappings": [
+    {
+      "source": "_id",
+      "target": "id"
+    },
+    {
+      "source": "name",
+      "target": "name"
+    },
+    {
+      "source": "price",
+      "target": "price"
+    },
+    {
+      "source": "stock",
+      "target": "stock"
+    }
+  ]
 }

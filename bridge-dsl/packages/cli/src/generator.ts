@@ -1,4 +1,4 @@
-import type { BridgeModel } from 'bridge-language';
+import type { BridgeModel, FieldMapping } from 'bridge-language';
 import * as fs from 'node:fs';
 import { extractDestinationAndName } from './util.js';
 
@@ -12,10 +12,16 @@ interface TargetPlan {
     [key: string]: string;
 }
 
+interface MappingPlan {
+    source: string;
+    target: string;
+}
+
 interface BridgeExecutionPlan {
     bridgeName: string;
     source: SourcePlan;
     target: TargetPlan;
+    mappings: MappingPlan[];
 }
 
 function createSourcePlan(model: BridgeModel): SourcePlan {
@@ -42,11 +48,19 @@ function createTargetPlan(model: BridgeModel): TargetPlan {
     return targetPlan;
 }
 
+function createMappingPlan(mapping: FieldMapping): MappingPlan {
+    return {
+        source: mapping.source,
+        target: mapping.target
+    };
+}
+
 function createExecutionPlan(model: BridgeModel): BridgeExecutionPlan {
     return {
         bridgeName: model.name,
         source: createSourcePlan(model),
-        target: createTargetPlan(model)
+        target: createTargetPlan(model),
+        mappings: model.mapping.mappings.map(createMappingPlan)
     };
 }
 

@@ -4,6 +4,7 @@ entry BridgeModel:
     'bridge' name=ID '{'
         source=Source
         target=Target
+        mapping=MappingBlock
     '}'
 ;
 
@@ -17,6 +18,16 @@ Target:
     'target' technology=ID '{'
         properties+=ConfigProperty*
     '}'
+;
+
+MappingBlock:
+    'mapping' '{'
+        mappings+=FieldMapping*
+    '}'
+;
+
+FieldMapping:
+    source=ID '->' target=ID
 ;
 
 ConfigProperty:

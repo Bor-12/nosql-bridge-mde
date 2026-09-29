@@ -7,4 +7,11 @@ bridge ProductBridge {
         table "Products"
         partitionKey "id"
     }
+
+    mapping {
+        _id -> id
+        name -> name
+        price -> price
+        stock -> stock
+    }
 }
