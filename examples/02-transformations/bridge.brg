@@ -1,0 +1,18 @@
+bridge ProductTransformationBridge {
+
+    source MongoDB {
+        collection "products"
+    }
+
+    target DynamoDB {
+        table "Products"
+        partitionKey "id"
+    }
+
+    mapping {
+        _id   -> id
+        name  -> productName
+        price -> price using toNumber
+        status -> status default "ACTIVE"
+    }
+}
