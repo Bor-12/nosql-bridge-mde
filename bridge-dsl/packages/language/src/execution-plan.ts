@@ -16,6 +16,7 @@ export interface MappingPlan {
 }
 
 export interface BridgeExecutionPlan {
+    planVersion: 1;
     bridgeName: string;
     source: SourcePlan;
     target: TargetPlan;
@@ -59,6 +60,7 @@ function createMappingPlan(mapping: FieldMapping): MappingPlan {
 
 export function createExecutionPlan(model: BridgeModel): BridgeExecutionPlan {
     return {
+        planVersion: 1,
         bridgeName: model.name,
         source: createSourcePlan(model),
         target: createTargetPlan(model),

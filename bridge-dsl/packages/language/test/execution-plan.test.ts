@@ -25,6 +25,18 @@ async function generatePlan(input: string) {
 }
 
 describe('BridgeExecutionPlan generation', () => {
+    it('generates plan version 1 for every execution plan', async () => {
+        const plan = await generatePlan(`
+            bridge ProductBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                mapping {}
+            }
+        `);
+
+        expect(plan.planVersion).toBe(1);
+    });
+
     it('generates the bridge name', async () => {
         const plan = await generatePlan(`
             bridge ProductBridge {
@@ -176,6 +188,7 @@ describe('Bridge DSL to BridgeExecutionPlan integration', () => {
         `);
 
         expect(plan).toEqual({
+            planVersion: 1,
             bridgeName: 'ProductBridge',
             source: {
                 technology: 'mongodb',
