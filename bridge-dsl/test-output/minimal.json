@@ -25,6 +25,10 @@
     {
       "source": "stock",
       "target": "stock"
+    },
+    {
+      "source": "category.name",
+      "target": "category"
     }
   ]
 }

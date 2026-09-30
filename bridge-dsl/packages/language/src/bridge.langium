@@ -27,7 +27,11 @@ MappingBlock:
 ;
 
 FieldMapping:
-    source=ID '->' target=ID
+    source=FieldPath '->' target=ID
+;
+
+FieldPath:
+    parts+=ID ('.' parts+=ID)*
 ;
 
 ConfigProperty:
