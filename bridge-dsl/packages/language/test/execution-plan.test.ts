@@ -122,6 +122,36 @@ describe('BridgeExecutionPlan generation', () => {
             target: 'category'
         });
     });
+
+    it('joins nested source and target field path parts', async () => {
+        const plan = await generatePlan(`
+            bridge ProductBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                mapping { product.name -> details.name }
+            }
+        `);
+
+        expect(plan.mappings[0]).toEqual({
+            source: 'product.name',
+            target: 'details.name'
+        });
+    });
+
+    it('joins nested target field path parts for a simple source', async () => {
+        const plan = await generatePlan(`
+            bridge ProductBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                mapping { name -> product.name }
+            }
+        `);
+
+        expect(plan.mappings[0]).toEqual({
+            source: 'name',
+            target: 'product.name'
+        });
+    });
 });
 
 describe('Bridge DSL to BridgeExecutionPlan integration', () => {

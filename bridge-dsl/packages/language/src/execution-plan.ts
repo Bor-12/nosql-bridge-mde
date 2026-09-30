@@ -53,7 +53,7 @@ function fieldPathToString(path: FieldPath): string {
 function createMappingPlan(mapping: FieldMapping): MappingPlan {
     return {
         source: fieldPathToString(mapping.source),
-        target: mapping.target
+        target: fieldPathToString(mapping.target)
     };
 }
 

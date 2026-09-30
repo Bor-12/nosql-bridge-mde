@@ -1,0 +1,26 @@
+bridge ProductBridge {
+    source MongoDB {
+        collection "products"
+    }
+
+    target DynamoDB {
+        table "Products"
+        partitionKey "id"
+    }
+
+    mapping {
+        _id -> id
+
+        name -> name
+        price -> price
+        stock -> stock
+
+        category.name -> category
+
+        brand -> details.brand
+
+        dimensions.width -> dimensions.width
+
+        supplier.name -> manufacturer.name
+    }
+}

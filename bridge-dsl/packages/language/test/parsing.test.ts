@@ -127,4 +127,17 @@ describe('Bridge DSL parsing', () => {
 
         expect(model.mapping.mappings[0].source.parts).toEqual(['category', 'name']);
     });
+
+    it('parses nested source and target field paths', async () => {
+        const model = await parseBridge(`
+            bridge ProductBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                mapping { product.name -> details.name }
+            }
+        `);
+
+        expect(model.mapping.mappings[0].source.parts).toEqual(['product', 'name']);
+        expect(model.mapping.mappings[0].target.parts).toEqual(['details', 'name']);
+    });
 });

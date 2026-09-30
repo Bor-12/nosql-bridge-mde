@@ -27,7 +27,7 @@ MappingBlock:
 ;
 
 FieldMapping:
-    source=FieldPath '->' target=ID
+    source=FieldPath '->' target=FieldPath
 ;
 
 FieldPath:
