@@ -1,5 +1,5 @@
-import type { ValidationChecks } from 'langium';
-import type { BridgeAstType } from './generated/ast.js';
+import type { ValidationAcceptor, ValidationChecks } from 'langium';
+import type { BridgeAstType, BridgeModel } from './generated/ast.js';
 import type { BridgeServices } from './bridge-module.js';
 
 /**
@@ -9,11 +9,7 @@ export function registerValidationChecks(services: BridgeServices) {
     const registry = services.validation.ValidationRegistry;
     const validator = services.validation.BridgeValidator;
     const checks: ValidationChecks<BridgeAstType> = {
-        // TODO: Declare validators for your properties
-        // See doc : https://langium.org/docs/learn/workflow/create_validations/
-        /*
-        Element: validator.checkElement
-        */
+        BridgeModel: validator.checkBridgeHasMappings
     };
     registry.register(checks, validator);
 }
@@ -23,11 +19,11 @@ export function registerValidationChecks(services: BridgeServices) {
  */
 export class BridgeValidator {
 
-    // TODO: Add logic here for validation checks of properties
-    // See doc : https://langium.org/docs/learn/workflow/create_validations/
-    /*
-    checkElement(element: Element, accept: ValidationAcceptor): void {
-        // Always accepts
+    checkBridgeHasMappings(model: BridgeModel, accept: ValidationAcceptor): void {
+        if (model.mapping.mappings.length === 0) {
+            accept('error', 'A bridge must contain at least one mapping.', {
+                node: model.mapping
+            });
+        }
     }
-    */
 }
