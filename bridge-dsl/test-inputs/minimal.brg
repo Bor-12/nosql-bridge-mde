@@ -1,5 +1,6 @@
 bridge ProductBridge {
     source MongoDB {
+        database "shop"
         collection "products"
     }
 

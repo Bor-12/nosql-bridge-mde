@@ -1,6 +1,7 @@
 bridge ProductBridge {
     source MongoDB {
         technology "DynamoDB"
+        database "shop"
         collection "products"
     }
 

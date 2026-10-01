@@ -2,7 +2,7 @@ import type { ConnectorDescriptor } from './connector-descriptor.js';
 
 export const mongodbDescriptor: ConnectorDescriptor = {
     source: {
-        requiredProperties: ['collection'],
+        requiredProperties: ['database', 'collection'],
         capabilities: {
             dynamicFields: true,
             nullValues: true,
@@ -10,7 +10,7 @@ export const mongodbDescriptor: ConnectorDescriptor = {
         }
     },
     target: {
-        requiredProperties: ['collection'],
+        requiredProperties: ['database', 'collection'],
         capabilities: {
             dynamicFields: true,
             nullValues: true,
