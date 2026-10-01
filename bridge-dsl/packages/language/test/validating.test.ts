@@ -22,6 +22,68 @@ afterEach(async () => {
 describe('Bridge DSL semantic validation', () => {
     it.each([
         {
+            name: 'rejects a duplicate source property',
+            source: 'source MongoDB { database "shop" collection "products" collection "products-v2" }',
+            target: 'target DynamoDB { table "Products" partitionKey "id" }',
+            role: 'source',
+            duplicateIndexes: [2]
+        },
+        {
+            name: 'rejects a duplicate target property',
+            source: 'source MongoDB { database "shop" collection "products" }',
+            target: 'target DynamoDB { table "Products" partitionKey "id" partitionKey "otherId" }',
+            role: 'target',
+            duplicateIndexes: [2]
+        },
+        {
+            name: 'reports each occurrence after the first',
+            source: 'source MongoDB { database "shop" collection "a" collection "b" collection "c" }',
+            target: 'target DynamoDB { table "Products" partitionKey "id" }',
+            role: 'source',
+            duplicateIndexes: [2, 3]
+        },
+        {
+            name: 'accepts distinct extra properties within each connector',
+            source: 'source MongoDB { database "shop" collection "products" customOption "x" }',
+            target: 'target DynamoDB { table "Products" partitionKey "id" customOption "x" }',
+            role: 'source',
+            duplicateIndexes: []
+        },
+        {
+            name: 'treats property names as case-sensitive',
+            source: 'source MongoDB { database "shop" collection "products" Collection "other" }',
+            target: 'target DynamoDB { table "Products" partitionKey "id" }',
+            role: 'source',
+            duplicateIndexes: []
+        }
+    ] as const)('$name', async ({ source, target, role, duplicateIndexes }) => {
+        const result = await validate(`
+            bridge DuplicatePropertyBridge {
+                ${source}
+                ${target}
+                mapping { name -> name }
+            }
+        `);
+
+        expect(result.document.parseResult.lexerErrors).toHaveLength(0);
+        expect(result.document.parseResult.parserErrors).toHaveLength(0);
+        const connector = result.document.parseResult.value[role];
+        expect(result.diagnostics).toEqual(duplicateIndexes.map(index => {
+            const property = connector.properties[index];
+            const offset = property.$cstNode!.offset;
+            return expect.objectContaining({
+                message: `Duplicate connector property '${property.name}'.`,
+                severity: DiagnosticSeverity.Error,
+                range: {
+                    start: result.document.textDocument.positionAt(offset),
+                    end: result.document.textDocument.positionAt(offset + property.name.length)
+                }
+            });
+        }));
+    });
+
+    it.each([
+        {
             name: 'requires database for MongoDB source',
             source: 'source MongoDB { collection "products" }',
             target: 'target DynamoDB { table "Products" partitionKey "id" }',

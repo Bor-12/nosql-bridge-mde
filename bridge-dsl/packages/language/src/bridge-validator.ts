@@ -11,8 +11,8 @@ export function registerValidationChecks(services: BridgeServices) {
     const validator = services.validation.BridgeValidator;
     const checks: ValidationChecks<BridgeAstType> = {
         BridgeModel: validator.checkBridgeHasMappings,
-        Source: validator.checkConnectorRequirements,
-        Target: validator.checkConnectorRequirements
+        Source: [validator.checkConnectorRequirements, validator.checkDuplicateConnectorProperties],
+        Target: [validator.checkConnectorRequirements, validator.checkDuplicateConnectorProperties]
     };
     registry.register(checks, validator);
 }
@@ -21,6 +21,20 @@ export function registerValidationChecks(services: BridgeServices) {
  * Implementation of custom validations.
  */
 export class BridgeValidator {
+
+    checkDuplicateConnectorProperties(connector: Source | Target, accept: ValidationAcceptor): void {
+        const seenNames = new Set<string>();
+        for (const property of connector.properties) {
+            if (seenNames.has(property.name)) {
+                accept('error', `Duplicate connector property '${property.name}'.`, {
+                    node: property,
+                    property: 'name'
+                });
+            } else {
+                seenNames.add(property.name);
+            }
+        }
+    }
 
     checkConnectorRequirements(connector: Source | Target, accept: ValidationAcceptor): void {
         const descriptor = getConnectorDescriptor(connector.technology);
