@@ -2,12 +2,12 @@ import type { BridgeModel, FieldMapping, FieldPath } from './generated/ast.js';
 
 export interface SourcePlan {
     technology: string;
-    [key: string]: string;
+    config: Record<string, string>;
 }
 
 export interface TargetPlan {
     technology: string;
-    [key: string]: string;
+    config: Record<string, string>;
 }
 
 export interface MappingPlan {
@@ -25,11 +25,12 @@ export interface BridgeExecutionPlan {
 
 function createSourcePlan(model: BridgeModel): SourcePlan {
     const sourcePlan: SourcePlan = {
-        technology: model.source.technology.toLowerCase()
+        technology: model.source.technology.toLowerCase(),
+        config: {}
     };
 
     for (const property of model.source.properties) {
-        sourcePlan[property.name] = property.value;
+        sourcePlan.config[property.name] = property.value;
     }
 
     return sourcePlan;
@@ -37,11 +38,12 @@ function createSourcePlan(model: BridgeModel): SourcePlan {
 
 function createTargetPlan(model: BridgeModel): TargetPlan {
     const targetPlan: TargetPlan = {
-        technology: model.target.technology.toLowerCase()
+        technology: model.target.technology.toLowerCase(),
+        config: {}
     };
 
     for (const property of model.target.properties) {
-        targetPlan[property.name] = property.value;
+        targetPlan.config[property.name] = property.value;
     }
 
     return targetPlan;

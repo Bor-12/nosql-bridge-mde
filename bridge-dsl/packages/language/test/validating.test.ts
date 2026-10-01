@@ -20,6 +20,24 @@ afterEach(async () => {
 });
 
 describe('Bridge DSL semantic validation', () => {
+    it.each(['source', 'target'] as const)('accepts a dynamic technology property in %s', async connector => {
+        const result = await validate(`
+            bridge DynamicPropertyBridge {
+                source MongoDB {
+                    ${connector === 'source' ? 'technology "legacy"' : ''}
+                }
+                target DynamoDB {
+                    ${connector === 'target' ? 'technology "legacy"' : ''}
+                }
+                mapping { name -> name }
+            }
+        `);
+
+        expect(result.document.parseResult.lexerErrors).toHaveLength(0);
+        expect(result.document.parseResult.parserErrors).toHaveLength(0);
+        expect(result.diagnostics).toEqual([]);
+    });
+
     it('reports an error when a bridge has no mappings', async () => {
         const result = await validate(`
             bridge EmptyBridge {

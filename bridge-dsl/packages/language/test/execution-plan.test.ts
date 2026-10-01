@@ -25,6 +25,50 @@ async function generatePlan(input: string) {
 }
 
 describe('BridgeExecutionPlan generation', () => {
+    it.each(['source', 'target'] as const)('keeps a dynamic %s technology property inside config', async connector => {
+        const plan = await generatePlan(`
+            bridge DynamicPropertyBridge {
+                source MongoDB {
+                    ${connector === 'source' ? 'technology "legacy"' : ''}
+                    collection "products"
+                }
+                target DynamoDB {
+                    ${connector === 'target' ? 'technology "legacy"' : ''}
+                    table "Products"
+                }
+                mapping { name -> name }
+            }
+        `);
+
+        expect(plan.source).toEqual({
+            technology: 'mongodb',
+            config: {
+                ...(connector === 'source' ? { technology: 'legacy' } : {}),
+                collection: 'products'
+            }
+        });
+        expect(plan.target).toEqual({
+            technology: 'dynamodb',
+            config: {
+                ...(connector === 'target' ? { technology: 'legacy' } : {}),
+                table: 'Products'
+            }
+        });
+    });
+
+    it('generates empty config objects for connectors without properties', async () => {
+        const plan = await generatePlan(`
+            bridge EmptyConfigBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                mapping { name -> name }
+            }
+        `);
+
+        expect(plan.source).toEqual({ technology: 'mongodb', config: {} });
+        expect(plan.target).toEqual({ technology: 'dynamodb', config: {} });
+    });
+
     it('generates plan version 1 for every execution plan', async () => {
         const plan = await generatePlan(`
             bridge ProductBridge {
@@ -60,7 +104,9 @@ describe('BridgeExecutionPlan generation', () => {
 
         expect(plan.source).toEqual({
             technology: 'mongodb',
-            collection: 'products'
+            config: {
+                collection: 'products'
+            }
         });
     });
 
@@ -78,8 +124,10 @@ describe('BridgeExecutionPlan generation', () => {
 
         expect(plan.target).toEqual({
             technology: 'dynamodb',
-            table: 'Products',
-            partitionKey: 'id'
+            config: {
+                table: 'Products',
+                partitionKey: 'id'
+            }
         });
     });
 
@@ -97,8 +145,10 @@ describe('BridgeExecutionPlan generation', () => {
 
         expect(plan.target).toEqual({
             technology: 'customstore',
-            endpoint: 'local',
-            namespace: 'catalog'
+            config: {
+                endpoint: 'local',
+                namespace: 'catalog'
+            }
         });
     });
 
@@ -192,12 +242,16 @@ describe('Bridge DSL to BridgeExecutionPlan integration', () => {
             bridgeName: 'ProductBridge',
             source: {
                 technology: 'mongodb',
-                collection: 'products'
+                config: {
+                    collection: 'products'
+                }
             },
             target: {
                 technology: 'dynamodb',
-                table: 'Products',
-                partitionKey: 'id'
+                config: {
+                    table: 'Products',
+                    partitionKey: 'id'
+                }
             },
             mappings: [
                 { source: '_id', target: 'id' },
