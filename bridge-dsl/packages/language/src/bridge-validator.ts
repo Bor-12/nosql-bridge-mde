@@ -1,5 +1,5 @@
 import type { ValidationAcceptor, ValidationChecks } from 'langium';
-import type { BridgeAstType, BridgeModel, Source, Target } from './generated/ast.js';
+import type { BridgeAstType, BridgeModel, FieldPath, Source, Target } from './generated/ast.js';
 import type { BridgeServices } from './bridge-module.js';
 import { getConnectorDescriptor } from './connector-descriptors/connector-registry.js';
 
@@ -10,7 +10,7 @@ export function registerValidationChecks(services: BridgeServices) {
     const registry = services.validation.ValidationRegistry;
     const validator = services.validation.BridgeValidator;
     const checks: ValidationChecks<BridgeAstType> = {
-        BridgeModel: validator.checkBridgeHasMappings,
+        BridgeModel: [validator.checkBridgeHasMappings, validator.checkDuplicateTargetMappings],
         Source: [validator.checkConnectorRequirements, validator.checkDuplicateConnectorProperties],
         Target: [validator.checkConnectorRequirements, validator.checkDuplicateConnectorProperties]
     };
@@ -64,4 +64,22 @@ export class BridgeValidator {
             });
         }
     }
+
+    checkDuplicateTargetMappings(model: BridgeModel, accept: ValidationAcceptor): void {
+        const seenTargetPaths = new Set<string>();
+        for (const mapping of model.mapping.mappings) {
+            const targetPath = fieldPathToString(mapping.target);
+            if (seenTargetPaths.has(targetPath)) {
+                accept('error', `Duplicate target mapping '${targetPath}'.`, {
+                    node: mapping.target
+                });
+            } else {
+                seenTargetPaths.add(targetPath);
+            }
+        }
+    }
+}
+
+function fieldPathToString(fieldPath: FieldPath): string {
+    return fieldPath.parts.join('.');
 }

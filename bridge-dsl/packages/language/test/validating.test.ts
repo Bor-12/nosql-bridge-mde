@@ -6,6 +6,7 @@ import { DiagnosticSeverity } from 'vscode-languageserver-types';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 const emptyMappingMessage = 'A bridge must contain at least one mapping.';
+const duplicateTargetMappingPrefix = 'Duplicate target mapping';
 
 let services: ReturnType<typeof createBridgeServices>;
 let validate: ReturnType<typeof validationHelper<BridgeModel>>;
@@ -20,6 +21,74 @@ afterEach(async () => {
 });
 
 describe('Bridge DSL semantic validation', () => {
+    it.each([
+        {
+            name: 'rejects a duplicate simple target',
+            mappings: `
+                _id -> id
+                legacyId -> id
+            `,
+            duplicateTargetPaths: ['id'],
+            duplicateIndexes: [1]
+        },
+        {
+            name: 'rejects a duplicate nested target',
+            mappings: `
+                name -> product.name
+                legacyName -> product.name
+            `,
+            duplicateTargetPaths: ['product.name'],
+            duplicateIndexes: [1]
+        }
+    ])('$name', async ({ mappings, duplicateTargetPaths, duplicateIndexes }) => {
+        const result = await validate(`
+            bridge DuplicateTargetBridge {
+                source MongoDB { database "shop" collection "products" }
+                target DynamoDB { table "Products" partitionKey "id" }
+                mapping {
+                    ${mappings}
+                }
+            }
+        `);
+
+        expect(result.document.parseResult.lexerErrors).toHaveLength(0);
+        expect(result.document.parseResult.parserErrors).toHaveLength(0);
+        expect(result.diagnostics).toEqual(duplicateIndexes.map((mappingIndex, diagnosticIndex) => {
+            const target = result.document.parseResult.value.mapping.mappings[mappingIndex].target;
+            const targetPath = duplicateTargetPaths[diagnosticIndex];
+            const offset = target.$cstNode!.offset;
+            return expect.objectContaining({
+                message: `Duplicate target mapping '${targetPath}'.`,
+                severity: DiagnosticSeverity.Error,
+                range: {
+                    start: result.document.textDocument.positionAt(offset),
+                    end: result.document.textDocument.positionAt(offset + targetPath.length)
+                }
+            });
+        }));
+    });
+
+    it('does not treat parent and child target paths as duplicates', async () => {
+        const result = await validate(`
+            bridge DistinctTargetBridge {
+                source MongoDB { database "shop" collection "products" }
+                target DynamoDB { table "Products" partitionKey "id" }
+                mapping {
+                    name -> product
+                    price -> product.price
+                }
+            }
+        `);
+
+        expect(result.document.parseResult.lexerErrors).toHaveLength(0);
+        expect(result.document.parseResult.parserErrors).toHaveLength(0);
+        expect(result.diagnostics).not.toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                message: expect.stringContaining(duplicateTargetMappingPrefix)
+            })
+        ]));
+    });
+
     it.each([
         {
             name: 'rejects a duplicate source property',
