@@ -20,6 +20,7 @@ export interface BridgeExecutionPlan {
     bridgeName: string;
     source: SourcePlan;
     target: TargetPlan;
+    readonly unmappedPolicy: 'drop';
     mappings: MappingPlan[];
 }
 
@@ -66,6 +67,7 @@ export function createExecutionPlan(model: BridgeModel): BridgeExecutionPlan {
         bridgeName: model.name,
         source: createSourcePlan(model),
         target: createTargetPlan(model),
+        unmappedPolicy: model.unmapped?.policy ?? 'drop',
         mappings: model.mapping.mappings.map(createMappingPlan)
     };
 }

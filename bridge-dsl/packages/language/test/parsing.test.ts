@@ -36,6 +36,48 @@ describe('Bridge DSL parsing', () => {
         expect(model.name).toBe('ProductBridge');
     });
 
+    it('leaves unmapped undefined when omitted', async () => {
+        const model = await parseBridge(`
+            bridge ProductBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                mapping {}
+            }
+        `);
+
+        expect(model.unmapped).toBeUndefined();
+    });
+
+    it('parses an explicit unmapped drop policy', async () => {
+        const model = await parseBridge(`
+            bridge ProductBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                unmapped drop
+                mapping { name -> name }
+            }
+        `);
+
+        expect(model.unmapped).toMatchObject({
+            $type: 'UnmappedPolicy',
+            policy: 'drop'
+        });
+    });
+
+    it('rejects an unknown unmapped policy', async () => {
+        const document = await parse(`
+            bridge ProductBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                unmapped unknown
+                mapping { name -> name }
+            }
+        `);
+
+        expect(document.parseResult.lexerErrors).toHaveLength(0);
+        expect(document.parseResult.parserErrors).not.toHaveLength(0);
+    });
+
     it('parses a generic source technology', async () => {
         const model = await parseBridge(`
             bridge ProductBridge {

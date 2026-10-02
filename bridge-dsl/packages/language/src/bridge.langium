@@ -4,6 +4,7 @@ entry BridgeModel:
     'bridge' name=ID '{'
         source=Source
         target=Target
+        (unmapped=UnmappedPolicy)?
         mapping=MappingBlock
     '}'
 ;
@@ -18,6 +19,10 @@ Target:
     'target' technology=ID '{'
         properties+=ConfigProperty*
     '}'
+;
+
+UnmappedPolicy:
+    'unmapped' policy='drop'
 ;
 
 MappingBlock:

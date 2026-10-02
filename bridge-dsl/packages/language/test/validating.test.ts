@@ -373,23 +373,24 @@ describe('Bridge DSL semantic validation', () => {
         expect(result.diagnostics).toEqual([]);
     });
 
-    it('reports an error when a bridge has no mappings', async () => {
+    it('reports an error when a bridge with unmapped drop has no mappings', async () => {
         const result = await validate(`
             bridge EmptyBridge {
                 source MongoDB { database "shop" collection "products" }
                 target DynamoDB { table "Products" partitionKey "id" }
+                unmapped drop
                 mapping {}
             }
         `);
 
         expect(result.document.parseResult.lexerErrors).toHaveLength(0);
         expect(result.document.parseResult.parserErrors).toHaveLength(0);
-        expect(result.diagnostics).toEqual(expect.arrayContaining([
+        expect(result.diagnostics).toEqual([
             expect.objectContaining({
                 message: emptyMappingMessage,
                 severity: DiagnosticSeverity.Error
             })
-        ]));
+        ]);
     });
 
     it('does not report an empty mapping error when a bridge has mappings', async () => {

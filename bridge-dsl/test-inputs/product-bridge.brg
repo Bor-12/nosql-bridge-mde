@@ -11,6 +11,8 @@ bridge ProductBridge {
         partitionKey "id"
     }
 
+    unmapped drop
+
     mapping {
         _id -> id
 

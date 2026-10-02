@@ -217,10 +217,14 @@ describe('BridgeExecutionPlan generation', () => {
 });
 
 describe('Bridge DSL to BridgeExecutionPlan integration', () => {
-    it('generates a complete plan from a complete bridge definition', async () => {
+    it.each([
+        { name: 'implicit', declaration: '' },
+        { name: 'explicit', declaration: 'unmapped drop' }
+    ])('generates a complete plan with $name unmapped drop', async ({ declaration }) => {
         const plan = await generatePlan(`
             bridge ProductBridge {
                 source MongoDB {
+                    database "shop"
                     collection "products"
                 }
 
@@ -228,6 +232,8 @@ describe('Bridge DSL to BridgeExecutionPlan integration', () => {
                     table "Products"
                     partitionKey "id"
                 }
+
+                ${declaration}
 
                 mapping {
                     _id -> id
@@ -243,6 +249,7 @@ describe('Bridge DSL to BridgeExecutionPlan integration', () => {
             source: {
                 technology: 'mongodb',
                 config: {
+                    database: 'shop',
                     collection: 'products'
                 }
             },
@@ -253,6 +260,7 @@ describe('Bridge DSL to BridgeExecutionPlan integration', () => {
                     partitionKey: 'id'
                 }
             },
+            unmappedPolicy: 'drop',
             mappings: [
                 { source: '_id', target: 'id' },
                 { source: 'name', target: 'name' },
