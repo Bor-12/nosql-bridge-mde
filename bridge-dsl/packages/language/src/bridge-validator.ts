@@ -10,7 +10,11 @@ export function registerValidationChecks(services: BridgeServices) {
     const registry = services.validation.ValidationRegistry;
     const validator = services.validation.BridgeValidator;
     const checks: ValidationChecks<BridgeAstType> = {
-        BridgeModel: [validator.checkBridgeHasMappings, validator.checkDuplicateTargetMappings],
+        BridgeModel: [
+            validator.checkBridgeHasMappings,
+            validator.checkDuplicateTargetMappings,
+            validator.checkConflictingTargetMappings
+        ],
         Source: [validator.checkConnectorRequirements, validator.checkDuplicateConnectorProperties],
         Target: [validator.checkConnectorRequirements, validator.checkDuplicateConnectorProperties]
     };
@@ -78,6 +82,29 @@ export class BridgeValidator {
             }
         }
     }
+
+    checkConflictingTargetMappings(model: BridgeModel, accept: ValidationAcceptor): void {
+        const previousTargets: FieldPath[] = [];
+        for (const mapping of model.mapping.mappings) {
+            const currentTarget = mapping.target;
+            for (const previousTarget of previousTargets) {
+                const [parent, child] = previousTarget.parts.length < currentTarget.parts.length
+                    ? [previousTarget, currentTarget]
+                    : [currentTarget, previousTarget];
+                if (isProperPrefix(parent.parts, child.parts)) {
+                    accept('error', `Conflicting target mappings '${fieldPathToString(parent)}' and '${fieldPathToString(child)}'.`, {
+                        node: currentTarget
+                    });
+                }
+            }
+            previousTargets.push(currentTarget);
+        }
+    }
+}
+
+function isProperPrefix(parentParts: string[], childParts: string[]): boolean {
+    return parentParts.length < childParts.length
+        && parentParts.every((part, index) => part === childParts[index]);
 }
 
 function fieldPathToString(fieldPath: FieldPath): string {

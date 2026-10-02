@@ -68,25 +68,72 @@ describe('Bridge DSL semantic validation', () => {
         }));
     });
 
-    it('does not treat parent and child target paths as duplicates', async () => {
+    it.each([
+        {
+            name: 'rejects a parent target before its child without classifying it as a duplicate',
+            mappings: 'name -> product\nprice -> product.price',
+            conflictingTargetPath: 'product.price'
+        },
+        {
+            name: 'rejects a child target before its parent without classifying it as a duplicate',
+            mappings: 'price -> product.price\nname -> product',
+            conflictingTargetPath: 'product'
+        }
+    ])('$name', async ({ mappings, conflictingTargetPath }) => {
         const result = await validate(`
-            bridge DistinctTargetBridge {
+            bridge ConflictingTargetBridge {
                 source MongoDB { database "shop" collection "products" }
                 target DynamoDB { table "Products" partitionKey "id" }
                 mapping {
-                    name -> product
-                    price -> product.price
+                    ${mappings}
                 }
             }
         `);
 
         expect(result.document.parseResult.lexerErrors).toHaveLength(0);
         expect(result.document.parseResult.parserErrors).toHaveLength(0);
+        const target = result.document.parseResult.value.mapping.mappings[1].target;
+        const offset = target.$cstNode!.offset;
+        expect(result.diagnostics).toEqual([
+            expect.objectContaining({
+                message: "Conflicting target mappings 'product' and 'product.price'.",
+                severity: DiagnosticSeverity.Error,
+                range: {
+                    start: result.document.textDocument.positionAt(offset),
+                    end: result.document.textDocument.positionAt(offset + conflictingTargetPath.length)
+                }
+            })
+        ]);
         expect(result.diagnostics).not.toEqual(expect.arrayContaining([
             expect.objectContaining({
                 message: expect.stringContaining(duplicateTargetMappingPrefix)
             })
         ]));
+    });
+
+    it.each([
+        {
+            name: 'accepts sibling target paths',
+            mappings: 'name -> product.name\nprice -> product.price'
+        },
+        {
+            name: 'accepts textual prefixes that are not complete path segments',
+            mappings: 'sourceA -> product\nsourceB -> productCode'
+        }
+    ])('$name', async ({ mappings }) => {
+        const result = await validate(`
+            bridge NonConflictingTargetBridge {
+                source MongoDB { database "shop" collection "products" }
+                target DynamoDB { table "Products" partitionKey "id" }
+                mapping {
+                    ${mappings}
+                }
+            }
+        `);
+
+        expect(result.document.parseResult.lexerErrors).toHaveLength(0);
+        expect(result.document.parseResult.parserErrors).toHaveLength(0);
+        expect(result.diagnostics).toEqual([]);
     });
 
     it.each([
