@@ -13,6 +13,7 @@ export function registerValidationChecks(services: BridgeServices) {
         BridgeModel: [
             validator.checkBridgeHasMappings,
             validator.checkTargetNullValueCapability,
+            validator.checkTargetDynamicFieldsCapability,
             validator.checkDuplicateTargetMappings,
             validator.checkConflictingTargetMappings
         ],
@@ -88,6 +89,25 @@ export class BridgeValidator {
             } else {
                 accept('error', message, { node: model.target, property: 'technology' });
             }
+        }
+    }
+
+    checkTargetDynamicFieldsCapability(model: BridgeModel, accept: ValidationAcceptor): void {
+        const effectiveUnmappedPolicy = model.unmapped?.policy ?? 'drop';
+        if (effectiveUnmappedPolicy !== 'preserve') {
+            return;
+        }
+
+        const targetDescriptor = getConnectorDescriptor(model.target.technology);
+        if (!targetDescriptor) {
+            return;
+        }
+
+        if (!targetDescriptor.target.capabilities.dynamicFields) {
+            accept('error', `Target technology '${model.target.technology}' does not support dynamic fields required by unmapped preserve.`, {
+                node: model.unmapped!,
+                property: 'policy'
+            });
         }
     }
 

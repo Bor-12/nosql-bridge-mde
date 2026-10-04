@@ -43,6 +43,25 @@ const noNullStoreDescriptor: ConnectorDescriptor = {
     }
 };
 
+const fixedSchemaStoreDescriptor: ConnectorDescriptor = {
+    source: {
+        requiredProperties: [],
+        capabilities: {
+            dynamicFields: true,
+            nullValues: true,
+            nestedFields: true
+        }
+    },
+    target: {
+        requiredProperties: [],
+        capabilities: {
+            dynamicFields: false,
+            nullValues: true,
+            nestedFields: true
+        }
+    }
+};
+
 async function createIsolatedValidate() {
     vi.resetModules();
     vi.doMock('../src/connector-descriptors/connector-registry.js', () => ({
@@ -52,6 +71,8 @@ async function createIsolatedValidate() {
                     return mongoDescriptor;
                 case 'nonullstore':
                     return noNullStoreDescriptor;
+                case 'fixedschemastore':
+                    return fixedSchemaStoreDescriptor;
                 default:
                     return undefined;
             }
@@ -66,7 +87,7 @@ async function createIsolatedValidate() {
     };
 }
 
-describe('Bridge DSL null policy validation with mocked connector capabilities', () => {
+describe('Bridge DSL policy validation with mocked connector capabilities', () => {
     beforeEach(() => {
         vi.resetModules();
     });
@@ -112,12 +133,13 @@ describe('Bridge DSL null policy validation with mocked connector capabilities',
         await clearDocuments(services.shared);
     });
 
-    it('accepts nulls omit when the target does not support null values', async () => {
+    it.each(['', 'unmapped preserve'])('accepts nulls omit with %s when the target does not support null values', async unmappedDeclaration => {
         const { services, validate } = await createIsolatedValidate();
         const result = await validate(`
             bridge NullPolicyBridge {
                 source MongoDB { database "shop" collection "products" }
                 target NoNullStore {}
+                ${unmappedDeclaration}
                 nulls omit
                 mapping { name -> name }
             }
@@ -130,13 +152,13 @@ describe('Bridge DSL null policy validation with mocked connector capabilities',
         await clearDocuments(services.shared);
     });
 
-    it('does not duplicate diagnostics for an unknown target connector', async () => {
+    it.each(['nulls preserve', 'unmapped preserve'])('does not duplicate diagnostics for an unknown target connector with %s', async declaration => {
         const { services, validate } = await createIsolatedValidate();
         const result = await validate(`
             bridge UnknownConnectorBridge {
                 source MongoDB { database "shop" collection "products" }
                 target UnknownDB {}
-                nulls preserve
+                ${declaration}
                 mapping { name -> name }
             }
         `);
@@ -146,6 +168,91 @@ describe('Bridge DSL null policy validation with mocked connector capabilities',
         expect(result.diagnostics).toEqual([
             expect.objectContaining({
                 message: "Unknown connector technology 'UnknownDB'.",
+                severity: DiagnosticSeverity.Error
+            })
+        ]);
+
+        await clearDocuments(services.shared);
+    });
+
+    it('rejects unmapped preserve when the target does not support dynamic fields', async () => {
+        const { services, validate } = await createIsolatedValidate();
+        const result = await validate(`
+            bridge UnmappedPolicyBridge {
+                source MongoDB { database "shop" collection "products" }
+                target FixedSchemaStore {}
+                unmapped preserve
+                mapping { name -> name }
+            }
+        `);
+
+        expect(result.document.parseResult.lexerErrors).toHaveLength(0);
+        expect(result.document.parseResult.parserErrors).toHaveLength(0);
+        expect(result.diagnostics).toEqual([
+            expect.objectContaining({
+                message: "Target technology 'FixedSchemaStore' does not support dynamic fields required by unmapped preserve.",
+                severity: DiagnosticSeverity.Error
+            })
+        ]);
+        const [diagnostic] = result.diagnostics;
+        expect(result.document.textDocument.getText(diagnostic.range)).toBe('preserve');
+
+        await clearDocuments(services.shared);
+    });
+
+    it.each(['unmapped drop', ''])('accepts %s when the target does not support dynamic fields', async declaration => {
+        const { services, validate } = await createIsolatedValidate();
+        const result = await validate(`
+            bridge UnmappedPolicyBridge {
+                source MongoDB { database "shop" collection "products" }
+                target FixedSchemaStore {}
+                ${declaration}
+                nulls preserve
+                mapping { name -> name }
+            }
+        `);
+
+        expect(result.document.parseResult.lexerErrors).toHaveLength(0);
+        expect(result.document.parseResult.parserErrors).toHaveLength(0);
+        expect(result.diagnostics).toEqual([]);
+
+        await clearDocuments(services.shared);
+    });
+
+    it('accepts unmapped preserve when the target supports dynamic fields', async () => {
+        const { services, validate } = await createIsolatedValidate();
+        const result = await validate(`
+            bridge UnmappedPolicyBridge {
+                source MongoDB { database "shop" collection "products" }
+                target MongoDB { database "target" collection "products" }
+                unmapped preserve
+                mapping { name -> name }
+            }
+        `);
+
+        expect(result.document.parseResult.lexerErrors).toHaveLength(0);
+        expect(result.document.parseResult.parserErrors).toHaveLength(0);
+        expect(result.diagnostics).toEqual([]);
+
+        await clearDocuments(services.shared);
+    });
+
+    it('keeps empty mappings invalid with unmapped preserve and a capable target', async () => {
+        const { services, validate } = await createIsolatedValidate();
+        const result = await validate(`
+            bridge UnmappedPolicyBridge {
+                source MongoDB { database "shop" collection "products" }
+                target MongoDB { database "target" collection "products" }
+                unmapped preserve
+                mapping {}
+            }
+        `);
+
+        expect(result.document.parseResult.lexerErrors).toHaveLength(0);
+        expect(result.document.parseResult.parserErrors).toHaveLength(0);
+        expect(result.diagnostics).toEqual([
+            expect.objectContaining({
+                message: 'A bridge must contain at least one mapping.',
                 severity: DiagnosticSeverity.Error
             })
         ]);
