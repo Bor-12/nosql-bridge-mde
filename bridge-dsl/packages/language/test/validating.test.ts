@@ -321,6 +321,30 @@ describe('Bridge DSL semantic validation', () => {
     });
 
     it.each([
+        {
+            name: 'accepts explicit nulls preserve when target supports null values',
+            declaration: 'nulls preserve'
+        },
+        {
+            name: 'accepts nulls omit when target supports null values',
+            declaration: 'nulls omit'
+        }
+    ])('$name', async ({ declaration }) => {
+        const result = await validate(`
+            bridge NullPolicyBridge {
+                source MongoDB { database "shop" collection "products" }
+                target DynamoDB { table "Products" partitionKey "id" }
+                ${declaration}
+                mapping { name -> name }
+            }
+        `);
+
+        expect(result.document.parseResult.lexerErrors).toHaveLength(0);
+        expect(result.document.parseResult.parserErrors).toHaveLength(0);
+        expect(result.diagnostics).toEqual([]);
+    });
+
+    it.each([
         ['mOnGoDb', 'DyNaMoDb', 'database "shop" collection "products"', 'table "Products" partitionKey "id"'],
         ['DyNaMoDb', 'mOnGoDb', 'table "Products"', 'database "shop" collection "products"']
     ])('normalizes %s source and %s target technologies', async (source, target, sourceConfig, targetConfig) => {
@@ -379,6 +403,26 @@ describe('Bridge DSL semantic validation', () => {
                 source MongoDB { database "shop" collection "products" }
                 target DynamoDB { table "Products" partitionKey "id" }
                 unmapped drop
+                mapping {}
+            }
+        `);
+
+        expect(result.document.parseResult.lexerErrors).toHaveLength(0);
+        expect(result.document.parseResult.parserErrors).toHaveLength(0);
+        expect(result.diagnostics).toEqual([
+            expect.objectContaining({
+                message: emptyMappingMessage,
+                severity: DiagnosticSeverity.Error
+            })
+        ]);
+    });
+
+    it.each(['nulls preserve', 'nulls omit'] as const)('keeps empty mappings invalid with %s', async nullDeclaration => {
+        const result = await validate(`
+            bridge EmptyBridge {
+                source MongoDB { database "shop" collection "products" }
+                target DynamoDB { table "Products" partitionKey "id" }
+                ${nullDeclaration}
                 mapping {}
             }
         `);

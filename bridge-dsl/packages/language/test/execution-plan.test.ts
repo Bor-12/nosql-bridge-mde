@@ -81,6 +81,23 @@ describe('BridgeExecutionPlan generation', () => {
         expect(plan.planVersion).toBe(1);
     });
 
+    it.each([
+        { name: 'implicit preserve', declaration: '', policy: 'preserve' },
+        { name: 'explicit preserve', declaration: 'nulls preserve', policy: 'preserve' },
+        { name: 'explicit omit', declaration: 'nulls omit', policy: 'omit' }
+    ] as const)('generates $policy as the null policy for $name', async ({ declaration, policy }) => {
+        const plan = await generatePlan(`
+            bridge ProductBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                ${declaration}
+                mapping { name -> name }
+            }
+        `);
+
+        expect(plan.nullPolicy).toBe(policy);
+    });
+
     it('generates the bridge name', async () => {
         const plan = await generatePlan(`
             bridge ProductBridge {
@@ -262,11 +279,43 @@ describe('Bridge DSL to BridgeExecutionPlan integration', () => {
                 }
             },
             unmappedPolicy: policy,
+            nullPolicy: 'preserve',
             mappings: [
                 { source: '_id', target: 'id' },
                 { source: 'name', target: 'name' },
                 { source: 'category.name', target: 'category' }
             ]
         });
+    });
+
+    it.each([
+        { name: 'implicit preserve', declaration: '', policy: 'preserve' },
+        { name: 'explicit preserve', declaration: 'nulls preserve', policy: 'preserve' },
+        { name: 'explicit omit', declaration: 'nulls omit', policy: 'omit' }
+    ] as const)('generates a complete plan with $name nulls', async ({ declaration, policy }) => {
+        const plan = await generatePlan(`
+            bridge ProductBridge {
+                source MongoDB {
+                    database "shop"
+                    collection "products"
+                }
+
+                target DynamoDB {
+                    table "Products"
+                    partitionKey "id"
+                }
+
+                ${declaration}
+
+                mapping {
+                    _id -> id
+                    name -> name
+                    category.name -> category
+                }
+            }
+        `);
+
+        expect(plan.nullPolicy).toBe(policy);
+        expect(plan.unmappedPolicy).toBe('drop');
     });
 });

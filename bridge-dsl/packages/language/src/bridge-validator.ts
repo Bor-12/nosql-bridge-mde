@@ -12,6 +12,7 @@ export function registerValidationChecks(services: BridgeServices) {
     const checks: ValidationChecks<BridgeAstType> = {
         BridgeModel: [
             validator.checkBridgeHasMappings,
+            validator.checkTargetNullValueCapability,
             validator.checkDuplicateTargetMappings,
             validator.checkConflictingTargetMappings
         ],
@@ -66,6 +67,27 @@ export class BridgeValidator {
             accept('error', 'A bridge must contain at least one mapping.', {
                 node: model.mapping
             });
+        }
+    }
+
+    checkTargetNullValueCapability(model: BridgeModel, accept: ValidationAcceptor): void {
+        const effectiveNullPolicy = model.nulls?.policy ?? 'preserve';
+        if (effectiveNullPolicy === 'omit') {
+            return;
+        }
+
+        const targetDescriptor = getConnectorDescriptor(model.target.technology);
+        if (!targetDescriptor) {
+            return;
+        }
+
+        if (!targetDescriptor.target.capabilities.nullValues) {
+            const message = `Target technology '${model.target.technology}' does not support null values required by nulls preserve.`;
+            if (model.nulls) {
+                accept('error', message, { node: model.nulls, property: 'policy' });
+            } else {
+                accept('error', message, { node: model.target, property: 'technology' });
+            }
         }
     }
 

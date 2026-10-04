@@ -94,6 +94,64 @@ describe('Bridge DSL parsing', () => {
         expect(document.parseResult.parserErrors).not.toHaveLength(0);
     });
 
+    it('leaves nulls undefined when omitted', async () => {
+        const model = await parseBridge(`
+            bridge ProductBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                mapping {}
+            }
+        `);
+
+        expect(model.nulls).toBeUndefined();
+    });
+
+    it('parses an explicit nulls preserve policy', async () => {
+        const model = await parseBridge(`
+            bridge ProductBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                nulls preserve
+                mapping { name -> name }
+            }
+        `);
+
+        expect(model.nulls).toMatchObject({
+            $type: 'NullPolicy',
+            policy: 'preserve'
+        });
+    });
+
+    it('parses an explicit nulls omit policy', async () => {
+        const model = await parseBridge(`
+            bridge ProductBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                nulls omit
+                mapping { name -> name }
+            }
+        `);
+
+        expect(model.nulls).toMatchObject({
+            $type: 'NullPolicy',
+            policy: 'omit'
+        });
+    });
+
+    it('rejects an unknown nulls policy', async () => {
+        const document = await parse(`
+            bridge ProductBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                nulls unknown
+                mapping { name -> name }
+            }
+        `);
+
+        expect(document.parseResult.lexerErrors).toHaveLength(0);
+        expect(document.parseResult.parserErrors).not.toHaveLength(0);
+    });
+
     it('parses a generic source technology', async () => {
         const model = await parseBridge(`
             bridge ProductBridge {

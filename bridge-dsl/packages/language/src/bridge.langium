@@ -5,6 +5,7 @@ entry BridgeModel:
         source=Source
         target=Target
         (unmapped=UnmappedPolicy)?
+        (nulls=NullPolicy)?
         mapping=MappingBlock
     '}'
 ;
@@ -23,6 +24,10 @@ Target:
 
 UnmappedPolicy:
     'unmapped' policy=('drop' | 'preserve')
+;
+
+NullPolicy:
+    'nulls' policy=('preserve' | 'omit')
 ;
 
 MappingBlock:

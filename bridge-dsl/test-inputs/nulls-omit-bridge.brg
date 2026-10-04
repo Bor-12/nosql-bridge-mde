@@ -1,0 +1,20 @@
+bridge NullOmitBridge {
+    source MongoDB {
+        database "shop"
+        collection "products"
+    }
+
+    target DynamoDB {
+        table "Products"
+        partitionKey "id"
+    }
+
+    unmapped drop
+    nulls omit
+
+    mapping {
+        _id -> id
+        name -> name
+        description -> description
+    }
+}
