@@ -20,7 +20,7 @@ export interface BridgeExecutionPlan {
     bridgeName: string;
     source: SourcePlan;
     target: TargetPlan;
-    readonly unmappedPolicy: 'drop';
+    readonly unmappedPolicy: 'drop' | 'preserve';
     mappings: MappingPlan[];
 }
 

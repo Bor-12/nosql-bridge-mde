@@ -22,7 +22,7 @@ Target:
 ;
 
 UnmappedPolicy:
-    'unmapped' policy='drop'
+    'unmapped' policy=('drop' | 'preserve')
 ;
 
 MappingBlock:

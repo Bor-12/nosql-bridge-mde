@@ -64,6 +64,22 @@ describe('Bridge DSL parsing', () => {
         });
     });
 
+    it('parses an explicit unmapped preserve policy', async () => {
+        const model = await parseBridge(`
+            bridge ProductBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                unmapped preserve
+                mapping { name -> name }
+            }
+        `);
+
+        expect(model.unmapped).toMatchObject({
+            $type: 'UnmappedPolicy',
+            policy: 'preserve'
+        });
+    });
+
     it('rejects an unknown unmapped policy', async () => {
         const document = await parse(`
             bridge ProductBridge {

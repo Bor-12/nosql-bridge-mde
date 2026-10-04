@@ -1,0 +1,17 @@
+bridge PreserveBridge {
+    source MongoDB {
+        database "shop"
+        collection "products"
+    }
+
+    target DynamoDB {
+        table "Products"
+        partitionKey "id"
+    }
+
+    unmapped preserve
+
+    mapping {
+        _id -> id
+    }
+}
