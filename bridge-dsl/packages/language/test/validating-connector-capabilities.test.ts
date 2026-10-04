@@ -62,6 +62,44 @@ const fixedSchemaStoreDescriptor: ConnectorDescriptor = {
     }
 };
 
+const flatSourceStoreDescriptor: ConnectorDescriptor = {
+    source: {
+        requiredProperties: [],
+        capabilities: {
+            dynamicFields: true,
+            nullValues: true,
+            nestedFields: false
+        }
+    },
+    target: {
+        requiredProperties: [],
+        capabilities: {
+            dynamicFields: true,
+            nullValues: true,
+            nestedFields: true
+        }
+    }
+};
+
+const flatTargetStoreDescriptor: ConnectorDescriptor = {
+    source: {
+        requiredProperties: [],
+        capabilities: {
+            dynamicFields: true,
+            nullValues: true,
+            nestedFields: true
+        }
+    },
+    target: {
+        requiredProperties: [],
+        capabilities: {
+            dynamicFields: true,
+            nullValues: true,
+            nestedFields: false
+        }
+    }
+};
+
 async function createIsolatedValidate() {
     vi.resetModules();
     vi.doMock('../src/connector-descriptors/connector-registry.js', () => ({
@@ -73,6 +111,10 @@ async function createIsolatedValidate() {
                     return noNullStoreDescriptor;
                 case 'fixedschemastore':
                     return fixedSchemaStoreDescriptor;
+                case 'flatsourcestore':
+                    return flatSourceStoreDescriptor;
+                case 'flattargetstore':
+                    return flatTargetStoreDescriptor;
                 default:
                     return undefined;
             }
@@ -87,7 +129,7 @@ async function createIsolatedValidate() {
     };
 }
 
-describe('Bridge DSL policy validation with mocked connector capabilities', () => {
+describe('Bridge DSL validation with mocked connector capabilities', () => {
     beforeEach(() => {
         vi.resetModules();
     });
@@ -233,6 +275,140 @@ describe('Bridge DSL policy validation with mocked connector capabilities', () =
         expect(result.document.parseResult.lexerErrors).toHaveLength(0);
         expect(result.document.parseResult.parserErrors).toHaveLength(0);
         expect(result.diagnostics).toEqual([]);
+
+        await clearDocuments(services.shared);
+    });
+
+    it.each([
+        {
+            role: 'source',
+            source: 'FlatSourceStore {}',
+            target: 'MongoDB { database "target" collection "products" }',
+            mapping: 'category.name -> category',
+            message: "Source technology 'FlatSourceStore' does not support nested fields required by source path 'category.name'.",
+            path: 'category.name'
+        },
+        {
+            role: 'target',
+            source: 'MongoDB { database "shop" collection "products" }',
+            target: 'FlatTargetStore {}',
+            mapping: 'name -> product.name',
+            message: "Target technology 'FlatTargetStore' does not support nested fields required by target path 'product.name'.",
+            path: 'product.name'
+        }
+    ])('rejects a nested $role path when that role does not support nested fields', async ({ source, target, mapping, message, path }) => {
+        const { services, validate } = await createIsolatedValidate();
+        const result = await validate(`
+            bridge NestedPathBridge {
+                source ${source}
+                target ${target}
+                mapping { ${mapping} }
+            }
+        `);
+
+        expect(result.diagnostics).toEqual([
+            expect.objectContaining({ message, severity: DiagnosticSeverity.Error })
+        ]);
+        const [diagnostic] = result.diagnostics;
+        expect(result.document.textDocument.getText(diagnostic.range)).toBe(path);
+
+        await clearDocuments(services.shared);
+    });
+
+    it.each([
+        {
+            name: 'simple source path with nestedFields=false',
+            source: 'FlatSourceStore {}',
+            target: 'MongoDB { database "target" collection "products" }',
+            mapping: 'name -> name'
+        },
+        {
+            name: 'simple target path with nestedFields=false',
+            source: 'MongoDB { database "shop" collection "products" }',
+            target: 'FlatTargetStore {}',
+            mapping: 'name -> name'
+        },
+        {
+            name: 'nested source and target paths with capable connectors',
+            source: 'MongoDB { database "shop" collection "products" }',
+            target: 'MongoDB { database "target" collection "products" }',
+            mapping: 'product.name -> details.name'
+        },
+        {
+            name: 'nested paths using the capable roles of asymmetric connectors',
+            source: 'FlatTargetStore {}',
+            target: 'FlatSourceStore {}',
+            mapping: 'product.name -> details.name'
+        }
+    ])('accepts $name', async ({ source, target, mapping }) => {
+        const { services, validate } = await createIsolatedValidate();
+        const result = await validate(`
+            bridge NestedPathBridge {
+                source ${source}
+                target ${target}
+                mapping { ${mapping} }
+            }
+        `);
+
+        expect(result.diagnostics).toEqual([]);
+
+        await clearDocuments(services.shared);
+    });
+
+    it.each([
+        {
+            role: 'source',
+            source: 'UnknownDB {}',
+            target: 'MongoDB { database "target" collection "products" }'
+        },
+        {
+            role: 'target',
+            source: 'MongoDB { database "shop" collection "products" }',
+            target: 'UnknownDB {}'
+        }
+    ])('does not add nested diagnostics for an unknown $role connector', async ({ source, target }) => {
+        const { services, validate } = await createIsolatedValidate();
+        const result = await validate(`
+            bridge NestedPathBridge {
+                source ${source}
+                target ${target}
+                mapping { product.name -> details.name }
+            }
+        `);
+
+        expect(result.diagnostics).toEqual([
+            expect.objectContaining({
+                message: "Unknown connector technology 'UnknownDB'.",
+                severity: DiagnosticSeverity.Error
+            })
+        ]);
+
+        await clearDocuments(services.shared);
+    });
+
+    it('reports both unsupported roles independently for nested source and target paths', async () => {
+        const { services, validate } = await createIsolatedValidate();
+        const result = await validate(`
+            bridge NestedPathBridge {
+                source FlatSourceStore {}
+                target FlatTargetStore {}
+                mapping { product.name -> details.name }
+            }
+        `);
+
+        expect(result.diagnostics).toHaveLength(2);
+        expect(result.diagnostics).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                message: "Source technology 'FlatSourceStore' does not support nested fields required by source path 'product.name'.",
+                severity: DiagnosticSeverity.Error
+            }),
+            expect.objectContaining({
+                message: "Target technology 'FlatTargetStore' does not support nested fields required by target path 'details.name'.",
+                severity: DiagnosticSeverity.Error
+            })
+        ]));
+        expect(result.diagnostics.map(diagnostic => result.document.textDocument.getText(diagnostic.range)).sort())
+            .toEqual(['details.name', 'product.name']);
 
         await clearDocuments(services.shared);
     });

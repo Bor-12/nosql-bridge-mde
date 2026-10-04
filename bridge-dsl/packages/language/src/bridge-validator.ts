@@ -14,6 +14,7 @@ export function registerValidationChecks(services: BridgeServices) {
             validator.checkBridgeHasMappings,
             validator.checkTargetNullValueCapability,
             validator.checkTargetDynamicFieldsCapability,
+            validator.checkNestedFieldCapabilities,
             validator.checkDuplicateTargetMappings,
             validator.checkConflictingTargetMappings
         ],
@@ -108,6 +109,24 @@ export class BridgeValidator {
                 node: model.unmapped!,
                 property: 'policy'
             });
+        }
+    }
+
+    checkNestedFieldCapabilities(model: BridgeModel, accept: ValidationAcceptor): void {
+        const sourceDescriptor = getConnectorDescriptor(model.source.technology);
+        const targetDescriptor = getConnectorDescriptor(model.target.technology);
+
+        for (const mapping of model.mapping.mappings) {
+            if (sourceDescriptor && mapping.source.parts.length > 1 && !sourceDescriptor.source.capabilities.nestedFields) {
+                accept('error', `Source technology '${model.source.technology}' does not support nested fields required by source path '${fieldPathToString(mapping.source)}'.`, {
+                    node: mapping.source
+                });
+            }
+            if (targetDescriptor && mapping.target.parts.length > 1 && !targetDescriptor.target.capabilities.nestedFields) {
+                accept('error', `Target technology '${model.target.technology}' does not support nested fields required by target path '${fieldPathToString(mapping.target)}'.`, {
+                    node: mapping.target
+                });
+            }
         }
     }
 
