@@ -1,0 +1,18 @@
+bridge OrdersBridge {
+    source MongoDB {
+        database "shop"
+        collection "orders"
+    }
+
+    target DynamoDB {
+        table "Orders"
+        partitionKey "customerId"
+        sortKey "orderDate"
+    }
+
+    mapping {
+        customer.id -> customerId
+        createdAt -> orderDate
+        total -> total
+    }
+}

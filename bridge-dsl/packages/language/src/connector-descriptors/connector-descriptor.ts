@@ -4,8 +4,21 @@ export interface ConnectorCapabilities {
     readonly nestedFields: boolean;
 }
 
+export type ConnectorPropertyDescriptor =
+    | {
+        readonly name: string;
+        readonly required: boolean;
+        readonly semantic: 'value';
+    }
+    | {
+        readonly name: string;
+        readonly required: boolean;
+        readonly semantic: 'targetField';
+        readonly requiresExplicitMapping?: boolean;
+    };
+
 export interface ConnectorRoleDescriptor {
-    readonly requiredProperties: readonly string[];
+    readonly properties: readonly ConnectorPropertyDescriptor[];
     readonly capabilities: ConnectorCapabilities;
 }
 

@@ -15,6 +15,7 @@ export function registerValidationChecks(services: BridgeServices) {
             validator.checkTargetNullValueCapability,
             validator.checkTargetDynamicFieldsCapability,
             validator.checkNestedFieldCapabilities,
+            validator.checkRequiredTargetFieldMappings,
             validator.checkDuplicateTargetMappings,
             validator.checkConflictingTargetMappings
         ],
@@ -55,9 +56,9 @@ export class BridgeValidator {
 
         const role = connector.$type === 'Source' ? 'source' : 'target';
         const presentProperties = new Set(connector.properties.map(property => property.name));
-        for (const requiredProperty of descriptor[role].requiredProperties) {
-            if (!presentProperties.has(requiredProperty)) {
-                accept('error', `Missing required property '${requiredProperty}' for ${connector.technology} ${role}.`, {
+        for (const property of descriptor[role].properties) {
+            if (property.required && !presentProperties.has(property.name)) {
+                accept('error', `Missing required property '${property.name}' for ${connector.technology} ${role}.`, {
                     node: connector
                 });
             }
@@ -125,6 +126,34 @@ export class BridgeValidator {
             if (targetDescriptor && mapping.target.parts.length > 1 && !targetDescriptor.target.capabilities.nestedFields) {
                 accept('error', `Target technology '${model.target.technology}' does not support nested fields required by target path '${fieldPathToString(mapping.target)}'.`, {
                     node: mapping.target
+                });
+            }
+        }
+    }
+
+    checkRequiredTargetFieldMappings(model: BridgeModel, accept: ValidationAcceptor): void {
+        if (model.mapping.mappings.length === 0) {
+            return;
+        }
+
+        const targetDescriptor = getConnectorDescriptor(model.target.technology);
+        if (!targetDescriptor) {
+            return;
+        }
+
+        for (const property of targetDescriptor.target.properties) {
+            if (property.semantic !== 'targetField' || property.requiresExplicitMapping !== true) {
+                continue;
+            }
+            const configProperty = model.target.properties.find(config => config.name === property.name);
+            if (!configProperty) {
+                continue;
+            }
+            const configuredTargetField = configProperty.value;
+            if (!model.mapping.mappings.some(mapping => fieldPathToString(mapping.target) === configuredTargetField)) {
+                accept('error', `Target technology '${model.target.technology}' requires field '${configuredTargetField}' configured by property '${property.name}' to be produced by an explicit mapping.`, {
+                    node: configProperty,
+                    property: 'value'
                 });
             }
         }

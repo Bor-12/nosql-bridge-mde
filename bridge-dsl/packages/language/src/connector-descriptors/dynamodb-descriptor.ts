@@ -2,7 +2,13 @@ import type { ConnectorDescriptor } from './connector-descriptor.js';
 
 export const dynamodbDescriptor: ConnectorDescriptor = {
     source: {
-        requiredProperties: ['table'],
+        properties: [
+            {
+                name: 'table',
+                required: true,
+                semantic: 'value'
+            }
+        ],
         capabilities: {
             dynamicFields: true,
             nullValues: true,
@@ -10,7 +16,25 @@ export const dynamodbDescriptor: ConnectorDescriptor = {
         }
     },
     target: {
-        requiredProperties: ['table', 'partitionKey'],
+        properties: [
+            {
+                name: 'table',
+                required: true,
+                semantic: 'value'
+            },
+            {
+                name: 'partitionKey',
+                required: true,
+                semantic: 'targetField',
+                requiresExplicitMapping: true
+            },
+            {
+                name: 'sortKey',
+                required: false,
+                semantic: 'targetField',
+                requiresExplicitMapping: true
+            }
+        ],
         capabilities: {
             dynamicFields: true,
             nullValues: true,

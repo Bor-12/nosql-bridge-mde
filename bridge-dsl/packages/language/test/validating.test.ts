@@ -36,6 +36,7 @@ describe('Bridge DSL semantic validation', () => {
             mappings: `
                 name -> product.name
                 legacyName -> product.name
+                _id -> id
             `,
             duplicateTargetPaths: ['product.name'],
             duplicateIndexes: [1]
@@ -86,6 +87,7 @@ describe('Bridge DSL semantic validation', () => {
                 target DynamoDB { table "Products" partitionKey "id" }
                 mapping {
                     ${mappings}
+                    _id -> id
                 }
             }
         `);
@@ -127,6 +129,7 @@ describe('Bridge DSL semantic validation', () => {
                 target DynamoDB { table "Products" partitionKey "id" }
                 mapping {
                     ${mappings}
+                    _id -> id
                 }
             }
         `);
@@ -177,7 +180,7 @@ describe('Bridge DSL semantic validation', () => {
             bridge DuplicatePropertyBridge {
                 ${source}
                 ${target}
-                mapping { name -> name }
+                mapping { name -> name _id -> id }
             }
         `);
 
@@ -285,7 +288,7 @@ describe('Bridge DSL semantic validation', () => {
             bridge ConnectorBridge {
                 ${source}
                 ${target}
-                mapping { name -> name }
+                mapping { name -> name _id -> id }
             }
         `);
 
@@ -306,7 +309,7 @@ describe('Bridge DSL semantic validation', () => {
                 ${connector === 'target'
                     ? 'target UnknownDB { foo "bar" }'
                     : 'target DynamoDB { table "Products" partitionKey "id" }'}
-                mapping { name -> name }
+                mapping { name -> name _id -> id }
             }
         `);
 
@@ -335,7 +338,7 @@ describe('Bridge DSL semantic validation', () => {
                 source MongoDB { database "shop" collection "products" }
                 target DynamoDB { table "Products" partitionKey "id" }
                 ${declaration}
-                mapping { name -> name }
+                mapping { name -> name _id -> id }
             }
         `);
 
@@ -352,7 +355,7 @@ describe('Bridge DSL semantic validation', () => {
             bridge NormalizedConnectorBridge {
                 source ${source} { ${sourceConfig} }
                 target ${target} { ${targetConfig} }
-                mapping { name -> name }
+                mapping { name -> name _id -> id }
             }
         `);
 
@@ -366,7 +369,7 @@ describe('Bridge DSL semantic validation', () => {
             bridge ExtraPropertyBridge {
                 source MongoDB { database "shop" collection "products" customOption "x" }
                 target DynamoDB { table "Products" partitionKey "id" customOption "x" }
-                mapping { name -> name }
+                mapping { name -> name _id -> id }
             }
         `);
 
@@ -388,7 +391,7 @@ describe('Bridge DSL semantic validation', () => {
                     partitionKey "id"
                     ${connector === 'target' ? 'technology "legacy"' : ''}
                 }
-                mapping { name -> name }
+                mapping { name -> name _id -> id }
             }
         `);
 
@@ -444,6 +447,7 @@ describe('Bridge DSL semantic validation', () => {
                 target DynamoDB { table "Products" partitionKey "id" }
                 mapping {
                     name -> name
+                    _id -> id
                 }
             }
         `);

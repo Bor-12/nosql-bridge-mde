@@ -7,7 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mongoDescriptor: ConnectorDescriptor = {
     source: {
-        requiredProperties: ['database', 'collection'],
+        properties: [
+            { name: 'database', required: true, semantic: 'value' },
+            { name: 'collection', required: true, semantic: 'value' }
+        ],
         capabilities: {
             dynamicFields: true,
             nullValues: true,
@@ -15,7 +18,10 @@ const mongoDescriptor: ConnectorDescriptor = {
         }
     },
     target: {
-        requiredProperties: ['database', 'collection'],
+        properties: [
+            { name: 'database', required: true, semantic: 'value' },
+            { name: 'collection', required: true, semantic: 'value' }
+        ],
         capabilities: {
             dynamicFields: true,
             nullValues: true,
@@ -26,7 +32,7 @@ const mongoDescriptor: ConnectorDescriptor = {
 
 const noNullStoreDescriptor: ConnectorDescriptor = {
     source: {
-        requiredProperties: [],
+        properties: [],
         capabilities: {
             dynamicFields: true,
             nullValues: true,
@@ -34,7 +40,7 @@ const noNullStoreDescriptor: ConnectorDescriptor = {
         }
     },
     target: {
-        requiredProperties: [],
+        properties: [],
         capabilities: {
             dynamicFields: true,
             nullValues: false,
@@ -45,7 +51,7 @@ const noNullStoreDescriptor: ConnectorDescriptor = {
 
 const fixedSchemaStoreDescriptor: ConnectorDescriptor = {
     source: {
-        requiredProperties: [],
+        properties: [],
         capabilities: {
             dynamicFields: true,
             nullValues: true,
@@ -53,7 +59,7 @@ const fixedSchemaStoreDescriptor: ConnectorDescriptor = {
         }
     },
     target: {
-        requiredProperties: [],
+        properties: [],
         capabilities: {
             dynamicFields: false,
             nullValues: true,
@@ -64,7 +70,7 @@ const fixedSchemaStoreDescriptor: ConnectorDescriptor = {
 
 const flatSourceStoreDescriptor: ConnectorDescriptor = {
     source: {
-        requiredProperties: [],
+        properties: [],
         capabilities: {
             dynamicFields: true,
             nullValues: true,
@@ -72,7 +78,7 @@ const flatSourceStoreDescriptor: ConnectorDescriptor = {
         }
     },
     target: {
-        requiredProperties: [],
+        properties: [],
         capabilities: {
             dynamicFields: true,
             nullValues: true,
@@ -83,7 +89,7 @@ const flatSourceStoreDescriptor: ConnectorDescriptor = {
 
 const flatTargetStoreDescriptor: ConnectorDescriptor = {
     source: {
-        requiredProperties: [],
+        properties: [],
         capabilities: {
             dynamicFields: true,
             nullValues: true,
@@ -91,7 +97,7 @@ const flatTargetStoreDescriptor: ConnectorDescriptor = {
         }
     },
     target: {
-        requiredProperties: [],
+        properties: [],
         capabilities: {
             dynamicFields: true,
             nullValues: true,
