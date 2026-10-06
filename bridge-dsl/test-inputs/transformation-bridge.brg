@@ -1,0 +1,18 @@
+bridge ProductTransformationBridge {
+    source MongoDB {
+        database "shop"
+        collection "products"
+    }
+
+    target DynamoDB {
+        table "Products"
+        partitionKey "id"
+    }
+
+    mapping {
+        _id -> id using toString
+        name -> name
+        price -> price using toDecimal
+        stock -> stock using toInteger
+    }
+}

@@ -1,7 +1,8 @@
 import type { ValidationAcceptor, ValidationChecks } from 'langium';
-import type { BridgeAstType, BridgeModel, FieldPath, Source, Target } from './generated/ast.js';
+import type { BridgeAstType, BridgeModel, FieldMapping, FieldPath, Source, Target } from './generated/ast.js';
 import type { BridgeServices } from './bridge-module.js';
 import { getConnectorDescriptor } from './connector-descriptors/connector-registry.js';
+import { isSupportedTransformation } from './transformations/transformation-registry.js';
 
 /**
  * Register custom validation checks.
@@ -19,6 +20,7 @@ export function registerValidationChecks(services: BridgeServices) {
             validator.checkDuplicateTargetMappings,
             validator.checkConflictingTargetMappings
         ],
+        FieldMapping: [validator.checkTransformation],
         Source: [validator.checkConnectorRequirements, validator.checkDuplicateConnectorProperties],
         Target: [validator.checkConnectorRequirements, validator.checkDuplicateConnectorProperties]
     };
@@ -29,6 +31,15 @@ export function registerValidationChecks(services: BridgeServices) {
  * Implementation of custom validations.
  */
 export class BridgeValidator {
+
+    checkTransformation(mapping: FieldMapping, accept: ValidationAcceptor): void {
+        if (mapping.transformation !== undefined && !isSupportedTransformation(mapping.transformation)) {
+            accept('error', `Unknown transformation '${mapping.transformation}'.`, {
+                node: mapping,
+                property: 'transformation'
+            });
+        }
+    }
 
     checkDuplicateConnectorProperties(connector: Source | Target, accept: ValidationAcceptor): void {
         const seenNames = new Set<string>();

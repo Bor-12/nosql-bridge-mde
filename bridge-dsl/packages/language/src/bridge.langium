@@ -37,7 +37,7 @@ MappingBlock:
 ;
 
 FieldMapping:
-    source=FieldPath '->' target=FieldPath
+    source=FieldPath '->' target=FieldPath ('using' transformation=ID)?
 ;
 
 FieldPath:

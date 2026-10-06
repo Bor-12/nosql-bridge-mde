@@ -25,6 +25,49 @@ async function generatePlan(input: string) {
 }
 
 describe('BridgeExecutionPlan generation', () => {
+    it.each(['toString', 'toInteger', 'toDecimal'])('copies %s without changing mapping paths', async transformation => {
+        const plan = await generatePlan(`
+            bridge TransformationBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                mapping { category.name -> product.category using ${transformation} }
+            }
+        `);
+
+        expect(plan.mappings).toEqual([
+            { source: 'category.name', target: 'product.category', transformation }
+        ]);
+        expect(plan.planVersion).toBe(1);
+    });
+
+    it('preserves mixed mapping order and omits absent transformations from the plan and JSON', async () => {
+        const plan = await generatePlan(`
+            bridge TransformationBridge {
+                source MongoDB { database "shop" collection "products" }
+                target DynamoDB { table "Products" partitionKey "id" }
+                mapping {
+                    _id -> id using toString
+                    name -> name
+                    price -> price using toDecimal
+                    stock -> stock using toInteger
+                }
+            }
+        `);
+
+        const expectedMappings = [
+            { source: '_id', target: 'id', transformation: 'toString' },
+            { source: 'name', target: 'name' },
+            { source: 'price', target: 'price', transformation: 'toDecimal' },
+            { source: 'stock', target: 'stock', transformation: 'toInteger' }
+        ];
+        expect(plan.mappings).toEqual(expectedMappings);
+        expect(plan.mappings[1]).not.toHaveProperty('transformation');
+        expect(JSON.parse(JSON.stringify(plan)).mappings).toEqual(expectedMappings);
+        expect(plan.target.config).toEqual({ table: 'Products', partitionKey: 'id' });
+        expect(plan.unmappedPolicy).toBe('drop');
+        expect(plan.nullPolicy).toBe('preserve');
+    });
+
     it.each(['source', 'target'] as const)('keeps a dynamic %s technology property inside config', async connector => {
         const plan = await generatePlan(`
             bridge DynamicPropertyBridge {

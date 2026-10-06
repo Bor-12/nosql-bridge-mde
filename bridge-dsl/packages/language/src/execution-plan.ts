@@ -13,6 +13,7 @@ export interface TargetPlan {
 export interface MappingPlan {
     source: string;
     target: string;
+    transformation?: string;
 }
 
 export interface BridgeExecutionPlan {
@@ -56,10 +57,14 @@ function fieldPathToString(path: FieldPath): string {
 }
 
 function createMappingPlan(mapping: FieldMapping): MappingPlan {
-    return {
+    const plan: MappingPlan = {
         source: fieldPathToString(mapping.source),
         target: fieldPathToString(mapping.target)
     };
+    if (mapping.transformation !== undefined) {
+        plan.transformation = mapping.transformation;
+    }
+    return plan;
 }
 
 export function createExecutionPlan(model: BridgeModel): BridgeExecutionPlan {

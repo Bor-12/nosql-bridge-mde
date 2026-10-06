@@ -24,6 +24,62 @@ async function parseBridge(input: string): Promise<BridgeModel> {
 }
 
 describe('Bridge DSL parsing', () => {
+    it.each([undefined, 'toString', 'toInteger', 'toDecimal', 'foo'])('parses a mapping with transformation %s', async transformation => {
+        const model = await parseBridge(`
+            bridge TransformationBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                mapping { price -> amount ${transformation === undefined ? '' : `using ${transformation}`} }
+            }
+        `);
+
+        expect(model.mapping.mappings[0].source.parts).toEqual(['price']);
+        expect(model.mapping.mappings[0].target.parts).toEqual(['amount']);
+        expect(model.mapping.mappings[0].transformation).toBe(transformation);
+    });
+
+    it('parses mixed mappings and nested paths with transformations', async () => {
+        const model = await parseBridge(`
+            bridge TransformationBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                mapping {
+                    _id -> id using toString
+                    name -> name
+                    category.name -> product.category using toString
+                }
+            }
+        `);
+
+        expect(model.mapping.mappings.map(mapping => ({
+            source: mapping.source.parts,
+            target: mapping.target.parts,
+            transformation: mapping.transformation
+        }))).toEqual([
+            { source: ['_id'], target: ['id'], transformation: 'toString' },
+            { source: ['name'], target: ['name'], transformation: undefined },
+            { source: ['category', 'name'], target: ['product', 'category'], transformation: 'toString' }
+        ]);
+    });
+
+    it.each([
+        'price -> price using toDecimal using toString',
+        'price -> price using toDecimal(2)',
+        'price -> price using "toDecimal"',
+        'price -> price default 0',
+        'firstName + lastName -> name'
+    ])('rejects unsupported mapping syntax: %s', async mapping => {
+        const document = await parse(`
+            bridge TransformationBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                mapping { ${mapping} }
+            }
+        `);
+
+        expect(document.parseResult.lexerErrors.length + document.parseResult.parserErrors.length).toBeGreaterThan(0);
+    });
+
     it('parses the bridge name', async () => {
         const model = await parseBridge(`
             bridge ProductBridge {
