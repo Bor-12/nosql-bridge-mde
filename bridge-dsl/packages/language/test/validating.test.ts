@@ -6,7 +6,7 @@ import { DiagnosticSeverity } from 'vscode-languageserver-types';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 const emptyMappingMessage = 'A bridge must contain at least one mapping.';
-const duplicateTargetMappingPrefix = 'Duplicate target mapping';
+const duplicateTargetMappingMessageFragment = 'is mapped more than once';
 
 let services: ReturnType<typeof createBridgeServices>;
 let validate: ReturnType<typeof validationHelper<BridgeModel>>;
@@ -59,7 +59,7 @@ describe('Bridge DSL semantic validation', () => {
             const targetPath = duplicateTargetPaths[diagnosticIndex];
             const offset = target.$cstNode!.offset;
             return expect.objectContaining({
-                message: `Duplicate target mapping '${targetPath}'.`,
+                message: `Target field '${targetPath}' is mapped more than once.`,
                 severity: DiagnosticSeverity.Error,
                 range: {
                     start: result.document.textDocument.positionAt(offset),
@@ -98,7 +98,7 @@ describe('Bridge DSL semantic validation', () => {
         const offset = target.$cstNode!.offset;
         expect(result.diagnostics).toEqual([
             expect.objectContaining({
-                message: "Conflicting target mappings 'product' and 'product.price'.",
+                message: "Target mappings 'product' and 'product.price' conflict because one path contains the other.",
                 severity: DiagnosticSeverity.Error,
                 range: {
                     start: result.document.textDocument.positionAt(offset),
@@ -108,7 +108,7 @@ describe('Bridge DSL semantic validation', () => {
         ]);
         expect(result.diagnostics).not.toEqual(expect.arrayContaining([
             expect.objectContaining({
-                message: expect.stringContaining(duplicateTargetMappingPrefix)
+                message: expect.stringContaining(duplicateTargetMappingMessageFragment)
             })
         ]));
     });
@@ -191,7 +191,7 @@ describe('Bridge DSL semantic validation', () => {
             const property = connector.properties[index];
             const offset = property.$cstNode!.offset;
             return expect.objectContaining({
-                message: `Duplicate connector property '${property.name}'.`,
+                message: `Property '${property.name}' is declared more than once in ${connector.technology} ${role}.`,
                 severity: DiagnosticSeverity.Error,
                 range: {
                     start: result.document.textDocument.positionAt(offset),

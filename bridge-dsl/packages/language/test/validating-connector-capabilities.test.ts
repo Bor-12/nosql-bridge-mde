@@ -170,7 +170,7 @@ describe('Bridge DSL validation with mocked connector capabilities', () => {
         expect(result.document.parseResult.lexerErrors).toHaveLength(0);
         expect(result.document.parseResult.parserErrors).toHaveLength(0);
         const diagnostic = expect.objectContaining({
-            message: "Target technology 'NoNullStore' does not support null values required by nulls preserve.",
+            message: "Target technology 'NoNullStore' cannot use 'nulls preserve' because it does not support null values.",
             severity: DiagnosticSeverity.Error
         });
         expect(result.diagnostics).toEqual([diagnostic]);
@@ -238,7 +238,7 @@ describe('Bridge DSL validation with mocked connector capabilities', () => {
         expect(result.document.parseResult.parserErrors).toHaveLength(0);
         expect(result.diagnostics).toEqual([
             expect.objectContaining({
-                message: "Target technology 'FixedSchemaStore' does not support dynamic fields required by unmapped preserve.",
+                message: "Target technology 'FixedSchemaStore' cannot use 'unmapped preserve' because it does not support dynamic fields.",
                 severity: DiagnosticSeverity.Error
             })
         ]);
@@ -291,7 +291,7 @@ describe('Bridge DSL validation with mocked connector capabilities', () => {
             source: 'FlatSourceStore {}',
             target: 'MongoDB { database "target" collection "products" }',
             mapping: 'category.name -> category',
-            message: "Source technology 'FlatSourceStore' does not support nested fields required by source path 'category.name'.",
+            message: "Nested source path 'category.name' is not supported by source technology 'FlatSourceStore'.",
             path: 'category.name'
         },
         {
@@ -299,7 +299,7 @@ describe('Bridge DSL validation with mocked connector capabilities', () => {
             source: 'MongoDB { database "shop" collection "products" }',
             target: 'FlatTargetStore {}',
             mapping: 'name -> product.name',
-            message: "Target technology 'FlatTargetStore' does not support nested fields required by target path 'product.name'.",
+            message: "Nested target path 'product.name' is not supported by target technology 'FlatTargetStore'.",
             path: 'product.name'
         }
     ])('rejects a nested $role path when that role does not support nested fields', async ({ source, target, mapping, message, path }) => {
@@ -405,11 +405,11 @@ describe('Bridge DSL validation with mocked connector capabilities', () => {
         expect(result.diagnostics).toHaveLength(2);
         expect(result.diagnostics).toEqual(expect.arrayContaining([
             expect.objectContaining({
-                message: "Source technology 'FlatSourceStore' does not support nested fields required by source path 'product.name'.",
+                message: "Nested source path 'product.name' is not supported by source technology 'FlatSourceStore'.",
                 severity: DiagnosticSeverity.Error
             }),
             expect.objectContaining({
-                message: "Target technology 'FlatTargetStore' does not support nested fields required by target path 'details.name'.",
+                message: "Nested target path 'details.name' is not supported by target technology 'FlatTargetStore'.",
                 severity: DiagnosticSeverity.Error
             })
         ]));

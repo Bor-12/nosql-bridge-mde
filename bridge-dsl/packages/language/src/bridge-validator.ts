@@ -32,9 +32,10 @@ export class BridgeValidator {
 
     checkDuplicateConnectorProperties(connector: Source | Target, accept: ValidationAcceptor): void {
         const seenNames = new Set<string>();
+        const role = connector.$type === 'Source' ? 'source' : 'target';
         for (const property of connector.properties) {
             if (seenNames.has(property.name)) {
-                accept('error', `Duplicate connector property '${property.name}'.`, {
+                accept('error', `Property '${property.name}' is declared more than once in ${connector.technology} ${role}.`, {
                     node: property,
                     property: 'name'
                 });
@@ -85,7 +86,7 @@ export class BridgeValidator {
         }
 
         if (!targetDescriptor.target.capabilities.nullValues) {
-            const message = `Target technology '${model.target.technology}' does not support null values required by nulls preserve.`;
+            const message = `Target technology '${model.target.technology}' cannot use 'nulls preserve' because it does not support null values.`;
             if (model.nulls) {
                 accept('error', message, { node: model.nulls, property: 'policy' });
             } else {
@@ -106,7 +107,7 @@ export class BridgeValidator {
         }
 
         if (!targetDescriptor.target.capabilities.dynamicFields) {
-            accept('error', `Target technology '${model.target.technology}' does not support dynamic fields required by unmapped preserve.`, {
+            accept('error', `Target technology '${model.target.technology}' cannot use 'unmapped preserve' because it does not support dynamic fields.`, {
                 node: model.unmapped!,
                 property: 'policy'
             });
@@ -119,12 +120,12 @@ export class BridgeValidator {
 
         for (const mapping of model.mapping.mappings) {
             if (sourceDescriptor && mapping.source.parts.length > 1 && !sourceDescriptor.source.capabilities.nestedFields) {
-                accept('error', `Source technology '${model.source.technology}' does not support nested fields required by source path '${fieldPathToString(mapping.source)}'.`, {
+                accept('error', `Nested source path '${fieldPathToString(mapping.source)}' is not supported by source technology '${model.source.technology}'.`, {
                     node: mapping.source
                 });
             }
             if (targetDescriptor && mapping.target.parts.length > 1 && !targetDescriptor.target.capabilities.nestedFields) {
-                accept('error', `Target technology '${model.target.technology}' does not support nested fields required by target path '${fieldPathToString(mapping.target)}'.`, {
+                accept('error', `Nested target path '${fieldPathToString(mapping.target)}' is not supported by target technology '${model.target.technology}'.`, {
                     node: mapping.target
                 });
             }
@@ -151,7 +152,7 @@ export class BridgeValidator {
             }
             const configuredTargetField = configProperty.value;
             if (!model.mapping.mappings.some(mapping => fieldPathToString(mapping.target) === configuredTargetField)) {
-                accept('error', `Target technology '${model.target.technology}' requires field '${configuredTargetField}' configured by property '${property.name}' to be produced by an explicit mapping.`, {
+                accept('error', `Target field '${configuredTargetField}' declared by '${property.name}' must be produced by a mapping.`, {
                     node: configProperty,
                     property: 'value'
                 });
@@ -164,7 +165,7 @@ export class BridgeValidator {
         for (const mapping of model.mapping.mappings) {
             const targetPath = fieldPathToString(mapping.target);
             if (seenTargetPaths.has(targetPath)) {
-                accept('error', `Duplicate target mapping '${targetPath}'.`, {
+                accept('error', `Target field '${targetPath}' is mapped more than once.`, {
                     node: mapping.target
                 });
             } else {
@@ -182,7 +183,7 @@ export class BridgeValidator {
                     ? [previousTarget, currentTarget]
                     : [currentTarget, previousTarget];
                 if (isProperPrefix(parent.parts, child.parts)) {
-                    accept('error', `Conflicting target mappings '${fieldPathToString(parent)}' and '${fieldPathToString(child)}'.`, {
+                    accept('error', `Target mappings '${fieldPathToString(parent)}' and '${fieldPathToString(child)}' conflict because one path contains the other.`, {
                         node: currentTarget
                     });
                 }

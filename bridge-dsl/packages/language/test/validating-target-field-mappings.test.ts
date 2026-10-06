@@ -100,7 +100,7 @@ describe('Required target field mappings', () => {
         expect(result.diagnostics).toHaveLength(missing.length);
         expect(result.diagnostics).toEqual(expect.arrayContaining(missing.map(({ property, field }) =>
             expect.objectContaining({
-                message: `Target technology 'DynamoDB' requires field '${field}' configured by property '${property}' to be produced by an explicit mapping.`,
+                message: `Target field '${field}' declared by '${property}' must be produced by a mapping.`,
                 severity: DiagnosticSeverity.Error
             })
         )));
