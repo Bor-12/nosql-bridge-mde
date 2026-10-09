@@ -4,10 +4,21 @@ entry BridgeModel:
     'bridge' name=ID '{'
         source=Source
         target=Target
+        (sourceTypes=SourceTypes)?
         (unmapped=UnmappedPolicy)?
         (nulls=NullPolicy)?
         mapping=MappingBlock
     '}'
+;
+
+SourceTypes:
+    'sourceTypes' '{'
+        declarations+=SourceTypeDeclaration*
+    '}'
+;
+
+SourceTypeDeclaration:
+    path=FieldPath types+=ID ('|' types+=ID)*
 ;
 
 Source:
