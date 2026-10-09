@@ -5,8 +5,11 @@ import { clearDocuments, validationHelper } from 'langium/test';
 import { DiagnosticSeverity } from 'vscode-languageserver-types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const allTestTypes = ['string', 'integer', 'decimal', 'boolean', 'binary', 'object', 'array', 'timestamp'] as const;
+
 const mongoDescriptor: ConnectorDescriptor = {
     source: {
+        supportedTypes: allTestTypes,
         properties: [
             { name: 'database', required: true, semantic: 'value' },
             { name: 'collection', required: true, semantic: 'value' }
@@ -18,6 +21,7 @@ const mongoDescriptor: ConnectorDescriptor = {
         }
     },
     target: {
+        supportedTypes: allTestTypes,
         properties: [
             { name: 'database', required: true, semantic: 'value' },
             { name: 'collection', required: true, semantic: 'value' }
@@ -32,6 +36,7 @@ const mongoDescriptor: ConnectorDescriptor = {
 
 const noNullStoreDescriptor: ConnectorDescriptor = {
     source: {
+        supportedTypes: allTestTypes,
         properties: [],
         capabilities: {
             dynamicFields: true,
@@ -40,6 +45,7 @@ const noNullStoreDescriptor: ConnectorDescriptor = {
         }
     },
     target: {
+        supportedTypes: allTestTypes,
         properties: [],
         capabilities: {
             dynamicFields: true,
@@ -51,6 +57,7 @@ const noNullStoreDescriptor: ConnectorDescriptor = {
 
 const fixedSchemaStoreDescriptor: ConnectorDescriptor = {
     source: {
+        supportedTypes: allTestTypes,
         properties: [],
         capabilities: {
             dynamicFields: true,
@@ -59,6 +66,7 @@ const fixedSchemaStoreDescriptor: ConnectorDescriptor = {
         }
     },
     target: {
+        supportedTypes: allTestTypes,
         properties: [],
         capabilities: {
             dynamicFields: false,
@@ -70,6 +78,7 @@ const fixedSchemaStoreDescriptor: ConnectorDescriptor = {
 
 const flatSourceStoreDescriptor: ConnectorDescriptor = {
     source: {
+        supportedTypes: allTestTypes,
         properties: [],
         capabilities: {
             dynamicFields: true,
@@ -78,6 +87,7 @@ const flatSourceStoreDescriptor: ConnectorDescriptor = {
         }
     },
     target: {
+        supportedTypes: allTestTypes,
         properties: [],
         capabilities: {
             dynamicFields: true,
@@ -89,6 +99,7 @@ const flatSourceStoreDescriptor: ConnectorDescriptor = {
 
 const flatTargetStoreDescriptor: ConnectorDescriptor = {
     source: {
+        supportedTypes: allTestTypes,
         properties: [],
         capabilities: {
             dynamicFields: true,
@@ -97,6 +108,7 @@ const flatTargetStoreDescriptor: ConnectorDescriptor = {
         }
     },
     target: {
+        supportedTypes: allTestTypes,
         properties: [],
         capabilities: {
             dynamicFields: true,
@@ -121,6 +133,16 @@ async function createIsolatedValidate() {
                     return flatSourceStoreDescriptor;
                 case 'flattargetstore':
                     return flatTargetStoreDescriptor;
+                case 'stringonlystore':
+                    return {
+                        source: mongoDescriptor.source,
+                        target: { ...mongoDescriptor.target, properties: [], supportedTypes: ['string'] }
+                    };
+                case 'customtypestore':
+                    return {
+                        source: { ...mongoDescriptor.source, properties: [], supportedTypes: ['string', 'geoPoint'] },
+                        target: { ...mongoDescriptor.target, properties: [], supportedTypes: ['string', 'geoPoint'] }
+                    };
                 default:
                     return undefined;
             }
@@ -136,6 +158,128 @@ async function createIsolatedValidate() {
 }
 
 describe('Bridge DSL validation with mocked connector capabilities', () => {
+    it.each([
+        { target: 'CustomTypeStore', using: '', message: undefined, range: undefined },
+        {
+            target: 'CustomTypeStore', using: 'using toDecimal',
+            message: "Transformation 'toDecimal' cannot accept type 'geoPoint' declared for source field 'location'.",
+            range: 'geoPoint'
+        },
+        {
+            target: 'StringOnlyStore', using: '',
+            message: "Target technology 'StringOnlyStore' does not support declared type 'geoPoint' mapped from source field 'location'.",
+            range: 'location'
+        }
+    ])('validates custom geoPoint with target $target and $using', async ({ target, using, message, range }) => {
+        const { services, validate } = await createIsolatedValidate();
+        const result = await validate(`bridge CustomTypes {
+            source CustomTypeStore {}
+            target ${target} {}
+            sourceTypes { location geoPoint }
+            mapping { location -> location ${using} }
+        }`);
+        expect(result.document.parseResult.lexerErrors).toEqual([]);
+        expect(result.document.parseResult.parserErrors).toEqual([]);
+        expect(result.diagnostics).toEqual(message ? [expect.objectContaining({
+            message, severity: DiagnosticSeverity.Error
+        })] : []);
+        if (range) {
+            expect(result.document.textDocument.getText(result.diagnostics[0].range)).toBe(range);
+        }
+        await clearDocuments(services.shared);
+    });
+
+    it('marks the second duplicate custom type supported by the connector', async () => {
+        const { services, validate } = await createIsolatedValidate();
+        const input = `bridge CustomTypes {
+            source CustomTypeStore {}
+            target CustomTypeStore {}
+            sourceTypes { location geoPoint | geoPoint }
+            mapping { location -> location }
+        }`;
+        const result = await validate(input);
+        expect(result.diagnostics).toEqual([expect.objectContaining({
+            message: "Type 'geoPoint' is declared more than once for source field 'location'.",
+            severity: DiagnosticSeverity.Error
+        })]);
+        expect(result.document.textDocument.getText(result.diagnostics[0].range)).toBe('geoPoint');
+        expect(result.document.textDocument.offsetAt(result.diagnostics[0].range.start)).toBe(input.lastIndexOf('geoPoint'));
+        await clearDocuments(services.shared);
+    });
+
+    it('rejects a transformation output using target metadata and marks the transformation', async () => {
+        const { services, validate } = await createIsolatedValidate();
+        const result = await validate(`bridge Types {
+            source MongoDB { database "shop" collection "products" }
+            target StringOnlyStore {}
+            sourceTypes { price string }
+            mapping { price -> amount using toDecimal }
+        }`);
+        expect(result.diagnostics).toEqual([expect.objectContaining({
+            message: "Target technology 'StringOnlyStore' does not support type 'decimal' produced by transformation 'toDecimal' for field 'amount'.",
+            severity: DiagnosticSeverity.Error
+        })]);
+        expect(result.document.textDocument.getText(result.diagnostics[0].range)).toBe('toDecimal');
+        await clearDocuments(services.shared);
+    });
+
+    it.each([
+        { types: '', transformation: 'toDecimal', message: "Source field 'price' used with transformation 'toDecimal' must declare at least one type." },
+        { types: 'sourceTypes { price object }', transformation: 'toDecimal', message: "Transformation 'toDecimal' cannot accept type 'object' declared for source field 'price'." },
+        { types: 'sourceTypes { price timestamp }', transformation: 'UnknownTransformation', message: "Unknown transformation 'UnknownTransformation'." }
+    ])('suppresses output errors when input validation fails: $message', async ({ types, transformation, message }) => {
+        const { services, validate } = await createIsolatedValidate();
+        const result = await validate(`bridge Types {
+            source MongoDB { database "shop" collection "products" }
+            target StringOnlyStore {}
+            ${types}
+            mapping { price -> amount using ${transformation} }
+        }`);
+        expect(result.diagnostics.map(d => d.message)).toEqual([message]);
+        await clearDocuments(services.shared);
+    });
+
+    it('deduplicates incompatible inputs and suppresses an unsupported transformation output', async () => {
+        const { services, validate } = await createIsolatedValidate();
+        const input = `bridge Types {
+            source MongoDB { database "shop" collection "products" }
+            target StringOnlyStore {}
+            sourceTypes { value object | object }
+            mapping { value -> amount using toDecimal }
+        }`;
+        const result = await validate(input);
+        expect(result.document.parseResult.lexerErrors).toEqual([]);
+        expect(result.document.parseResult.parserErrors).toEqual([]);
+        expect(result.diagnostics.map(d => d.message).sort()).toEqual([
+            "Transformation 'toDecimal' cannot accept type 'object' declared for source field 'value'.",
+            "Type 'object' is declared more than once for source field 'value'."
+        ]);
+        expect(result.diagnostics.every(d => d.severity === DiagnosticSeverity.Error)).toBe(true);
+        for (const diagnostic of result.diagnostics) {
+            expect(result.document.textDocument.getText(diagnostic.range)).toBe('object');
+            const expectedOffset = diagnostic.message === "Type 'object' is declared more than once for source field 'value'."
+                ? input.lastIndexOf('object') : input.indexOf('object');
+            expect(result.document.textDocument.offsetAt(diagnostic.range.start)).toBe(expectedOffset);
+        }
+        await clearDocuments(services.shared);
+    });
+
+    it('reports every unsupported passthrough type from target metadata', async () => {
+        const { services, validate } = await createIsolatedValidate();
+        const result = await validate(`bridge Types {
+            source MongoDB { database "shop" collection "products" }
+            target StringOnlyStore {}
+            sourceTypes { price string | decimal | timestamp }
+            mapping { price -> amount }
+        }`);
+        expect(result.diagnostics.map(d => d.message).sort()).toEqual([
+            "Target technology 'StringOnlyStore' does not support declared type 'decimal' mapped from source field 'price'.",
+            "Target technology 'StringOnlyStore' does not support declared type 'timestamp' mapped from source field 'price'."
+        ]);
+        expect(result.diagnostics.map(d => result.document.textDocument.getText(d.range))).toEqual(['amount', 'amount']);
+        await clearDocuments(services.shared);
+    });
+
     beforeEach(() => {
         vi.resetModules();
     });

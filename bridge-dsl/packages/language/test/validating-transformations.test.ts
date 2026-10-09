@@ -22,6 +22,7 @@ function bridgeWithMappings(mappings: string, targetConfig = 'table "Products" p
         bridge TransformationBridge {
             source MongoDB { database "shop" collection "products" }
             target DynamoDB { ${targetConfig} }
+            sourceTypes { _id string sequence integer a string b string }
             mapping { ${mappings} }
         }
     `;

@@ -1,4 +1,4 @@
-bridge ProductTransformationBridge {
+bridge TypedProductBridge {
     source MongoDB {
         database "shop"
         collection "products"
@@ -7,12 +7,23 @@ bridge ProductTransformationBridge {
     target DynamoDB {
         table "Products"
         partitionKey "id"
+        sortKey "createdAt"
     }
+
+    sourceTypes {
+        _id string
+        price string | integer | decimal
+        stock string | integer
+        createdAt timestamp
+    }
+
+    nulls preserve
 
     mapping {
         _id -> id using toString
         name -> name
         price -> price using toDecimal
         stock -> stock using toInteger
+        createdAt -> createdAt using toString
     }
 }

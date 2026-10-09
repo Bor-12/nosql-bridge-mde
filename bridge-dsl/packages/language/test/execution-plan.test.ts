@@ -45,6 +45,7 @@ describe('BridgeExecutionPlan generation', () => {
             bridge TransformationBridge {
                 source MongoDB { database "shop" collection "products" }
                 target DynamoDB { table "Products" partitionKey "id" }
+                sourceTypes { _id string price string stock string | integer }
                 mapping {
                     _id -> id using toString
                     name -> name
@@ -61,6 +62,9 @@ describe('BridgeExecutionPlan generation', () => {
             { source: 'stock', target: 'stock', transformation: 'toInteger' }
         ];
         expect(plan.mappings).toEqual(expectedMappings);
+        expect(plan).not.toHaveProperty('sourceTypes');
+        expect(JSON.parse(JSON.stringify(plan))).not.toHaveProperty('sourceTypes');
+        expect(plan.planVersion).toBe(1);
         expect(plan.mappings[1]).not.toHaveProperty('transformation');
         expect(JSON.parse(JSON.stringify(plan)).mappings).toEqual(expectedMappings);
         expect(plan.target.config).toEqual({ table: 'Products', partitionKey: 'id' });

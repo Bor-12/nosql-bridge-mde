@@ -1,8 +1,8 @@
 import type { ValidationAcceptor, ValidationChecks } from 'langium';
-import type { BridgeAstType, BridgeModel, FieldMapping, FieldPath, Source, Target } from './generated/ast.js';
+import type { BridgeAstType, BridgeModel, FieldMapping, FieldPath, Source, SourceTypes, SourceTypeDeclaration, Target } from './generated/ast.js';
 import type { BridgeServices } from './bridge-module.js';
 import { getConnectorDescriptor } from './connector-descriptors/connector-registry.js';
-import { isSupportedTransformation } from './transformations/transformation-registry.js';
+import { getTransformationDescriptor } from './transformations/transformation-registry.js';
 
 /**
  * Register custom validation checks.
@@ -18,9 +18,13 @@ export function registerValidationChecks(services: BridgeServices) {
             validator.checkNestedFieldCapabilities,
             validator.checkRequiredTargetFieldMappings,
             validator.checkDuplicateTargetMappings,
-            validator.checkConflictingTargetMappings
+            validator.checkConflictingTargetMappings,
+            validator.checkSourceTypeSupport,
+            validator.checkMappingTypes
         ],
         FieldMapping: [validator.checkTransformation],
+        SourceTypes: [validator.checkDuplicateSourceDeclarations],
+        SourceTypeDeclaration: [validator.checkDuplicateSourceTypes],
         Source: [validator.checkConnectorRequirements, validator.checkDuplicateConnectorProperties],
         Target: [validator.checkConnectorRequirements, validator.checkDuplicateConnectorProperties]
     };
@@ -33,11 +37,115 @@ export function registerValidationChecks(services: BridgeServices) {
 export class BridgeValidator {
 
     checkTransformation(mapping: FieldMapping, accept: ValidationAcceptor): void {
-        if (mapping.transformation !== undefined && !isSupportedTransformation(mapping.transformation)) {
+        if (mapping.transformation !== undefined && !getTransformationDescriptor(mapping.transformation)) {
             accept('error', `Unknown transformation '${mapping.transformation}'.`, {
                 node: mapping,
                 property: 'transformation'
             });
+        }
+    }
+
+    checkDuplicateSourceDeclarations(sourceTypes: SourceTypes, accept: ValidationAcceptor): void {
+        const seen = new Set<string>();
+        for (const declaration of sourceTypes.declarations) {
+            const path = fieldPathToString(declaration.path);
+            if (seen.has(path)) {
+                accept('error', `Source field '${path}' has more than one type declaration.`, { node: declaration.path });
+            }
+            seen.add(path);
+        }
+    }
+
+    checkDuplicateSourceTypes(declaration: SourceTypeDeclaration, accept: ValidationAcceptor): void {
+        const seen = new Set<string>();
+        declaration.types.forEach((type, index) => {
+            if (seen.has(type)) {
+                accept('error', `Type '${type}' is declared more than once for source field '${fieldPathToString(declaration.path)}'.`, {
+                    node: declaration, property: 'types', index
+                });
+            }
+            seen.add(type);
+        });
+    }
+
+    checkSourceTypeSupport(model: BridgeModel, accept: ValidationAcceptor): void {
+        const descriptor = getConnectorDescriptor(model.source.technology);
+        if (!descriptor) {
+            return;
+        }
+        const checkedTypesByPath = new Map<string, Set<string>>();
+        for (const declaration of model.sourceTypes?.declarations ?? []) {
+            const path = fieldPathToString(declaration.path);
+            let checkedTypes = checkedTypesByPath.get(path);
+            if (!checkedTypes) {
+                checkedTypes = new Set<string>();
+                checkedTypesByPath.set(path, checkedTypes);
+            }
+            declaration.types.forEach((type, index) => {
+                if (checkedTypes.has(type)) {
+                    return;
+                }
+                checkedTypes.add(type);
+                if (!descriptor.source.supportedTypes.includes(type)) {
+                    accept('error', `Source technology '${model.source.technology}' does not support declared type '${type}' for field '${path}'.`, {
+                        node: declaration, property: 'types', index
+                    });
+                }
+            });
+        }
+    }
+
+    checkMappingTypes(model: BridgeModel, accept: ValidationAcceptor): void {
+        const declarations = new Map<string, SourceTypeDeclaration>();
+        for (const declaration of model.sourceTypes?.declarations ?? []) {
+            const path = fieldPathToString(declaration.path);
+            if (!declarations.has(path)) {
+                declarations.set(path, declaration);
+            }
+        }
+        const target = getConnectorDescriptor(model.target.technology)?.target;
+        for (const mapping of model.mapping.mappings) {
+            const sourcePath = fieldPathToString(mapping.source);
+            const declaration = declarations.get(sourcePath);
+            if (mapping.transformation !== undefined) {
+                const transformation = getTransformationDescriptor(mapping.transformation);
+                if (!transformation) {
+                    continue;
+                }
+                if (!declaration || declaration.types.length === 0) {
+                    accept('error', `Source field '${sourcePath}' used with transformation '${mapping.transformation}' must declare at least one type.`, {
+                        node: mapping.source
+                    });
+                    continue;
+                }
+                let compatible = true;
+                const checkedTypes = new Set<string>();
+                declaration.types.forEach((type, index) => {
+                    if (checkedTypes.has(type)) {
+                        return;
+                    }
+                    checkedTypes.add(type);
+                    if (!transformation.inputTypes.includes(type)) {
+                        compatible = false;
+                        accept('error', `Transformation '${transformation.name}' cannot accept type '${type}' declared for source field '${sourcePath}'.`, {
+                            node: declaration, property: 'types', index
+                        });
+                    }
+                });
+                if (compatible && target && !target.supportedTypes.includes(transformation.outputType)) {
+                    accept('error', `Target technology '${model.target.technology}' does not support type '${transformation.outputType}' produced by transformation '${transformation.name}' for field '${fieldPathToString(mapping.target)}'.`, {
+                        node: mapping, property: 'transformation'
+                    });
+                }
+            } else if (declaration && target) {
+                for (const type of new Set(declaration.types)) {
+                    if (!target.supportedTypes.includes(type)) {
+                        accept('error', `Target technology '${model.target.technology}' does not support declared type '${type}' mapped from source field '${sourcePath}'.`, {
+                            node: mapping.target
+                        });
+                    }
+                }
+            }
         }
     }
 
