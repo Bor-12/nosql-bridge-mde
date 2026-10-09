@@ -18,6 +18,7 @@ export type ConnectorPropertyDescriptor =
     };
 
 export interface ConnectorRoleDescriptor {
+    readonly supportedTypes: readonly string[];
     readonly properties: readonly ConnectorPropertyDescriptor[];
     readonly capabilities: ConnectorCapabilities;
 }

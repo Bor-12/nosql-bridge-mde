@@ -1,7 +1,18 @@
 import type { ConnectorDescriptor } from './connector-descriptor.js';
 
+const dynamodbSupportedTypes = [
+    'string',
+    'integer',
+    'decimal',
+    'boolean',
+    'binary',
+    'object',
+    'array'
+] as const;
+
 export const dynamodbDescriptor: ConnectorDescriptor = {
     source: {
+        supportedTypes: dynamodbSupportedTypes,
         properties: [
             {
                 name: 'table',
@@ -16,6 +27,7 @@ export const dynamodbDescriptor: ConnectorDescriptor = {
         }
     },
     target: {
+        supportedTypes: dynamodbSupportedTypes,
         properties: [
             {
                 name: 'table',
