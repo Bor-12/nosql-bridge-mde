@@ -1,4 +1,4 @@
-package dev.borja.nosqlbridge.bridge_runtime;
+package dev.borja.nosqlbridge.runtime;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

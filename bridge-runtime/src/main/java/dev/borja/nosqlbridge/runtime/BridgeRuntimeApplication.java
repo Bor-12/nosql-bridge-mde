@@ -1,4 +1,4 @@
-package dev.borja.nosqlbridge.bridge_runtime;
+package dev.borja.nosqlbridge.runtime;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
