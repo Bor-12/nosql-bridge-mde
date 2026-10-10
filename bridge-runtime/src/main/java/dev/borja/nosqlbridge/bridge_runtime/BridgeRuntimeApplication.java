@@ -1,0 +1,13 @@
+package dev.borja.nosqlbridge.bridge_runtime;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class BridgeRuntimeApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(BridgeRuntimeApplication.class, args);
+	}
+
+}
