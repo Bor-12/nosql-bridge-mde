@@ -1,0 +1,84 @@
+{
+  "planVersion": 1,
+  "bridgeName": "FullFeatureBridge",
+  "source": {
+    "technology": "mongodb",
+    "config": {
+      "database": "shop",
+      "collection": "products"
+    }
+  },
+  "target": {
+    "technology": "dynamodb",
+    "config": {
+      "table": "Products",
+      "partitionKey": "id",
+      "sortKey": "createdAt"
+    }
+  },
+  "unmappedPolicy": "preserve",
+  "nullPolicy": "preserve",
+  "mappings": [
+    {
+      "source": "_id",
+      "target": "id",
+      "transformation": "toString"
+    },
+    {
+      "source": "name",
+      "target": "name"
+    },
+    {
+      "source": "price",
+      "target": "price",
+      "transformation": "toDecimal",
+      "defaultValue": {
+        "type": "string",
+        "value": "0"
+      }
+    },
+    {
+      "source": "stock",
+      "target": "stock",
+      "transformation": "toInteger",
+      "defaultValue": {
+        "type": "integer",
+        "value": 0
+      }
+    },
+    {
+      "source": "createdAt",
+      "target": "createdAt",
+      "transformation": "toString",
+      "defaultValue": {
+        "type": "string",
+        "value": "1970-01-01T00:00:00Z"
+      }
+    },
+    {
+      "source": "category.name",
+      "target": "category",
+      "transformation": "toString"
+    },
+    {
+      "source": "active",
+      "target": "active",
+      "defaultValue": {
+        "type": "boolean",
+        "value": true
+      }
+    },
+    {
+      "source": "status",
+      "target": "status",
+      "defaultValue": {
+        "type": "string",
+        "value": "ACTIVE"
+      }
+    },
+    {
+      "source": "metadata",
+      "target": "metadata"
+    }
+  ]
+}
