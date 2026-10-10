@@ -48,7 +48,27 @@ MappingBlock:
 ;
 
 FieldMapping:
-    source=FieldPath '->' target=FieldPath ('using' transformation=ID)?
+    source=FieldPath '->' target=FieldPath ('using' transformation=ID)? ('default' defaultValue=DefaultValue)?
+;
+
+DefaultValue:
+    StringDefaultValue | DecimalDefaultValue | IntegerDefaultValue | BooleanDefaultValue
+;
+
+StringDefaultValue:
+    value=STRING
+;
+
+IntegerDefaultValue:
+    value=(INT | NEG_INT)
+;
+
+DecimalDefaultValue:
+    value=DECIMAL
+;
+
+BooleanDefaultValue:
+    value=('true' | 'false')
 ;
 
 FieldPath:
@@ -61,6 +81,8 @@ ConfigProperty:
 
 hidden terminal WS: /\s+/;
 terminal ID: /[_a-zA-Z][\w_]*/;
+terminal DECIMAL returns number: /-?[0-9]+\.[0-9]+/;
+terminal NEG_INT returns number: /-[0-9]+/;
 terminal INT returns number: /[0-9]+/;
 terminal STRING: /"(\\.|[^"\\])*"|'(\\.|[^'\\])*'/;
 

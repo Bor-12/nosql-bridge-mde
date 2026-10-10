@@ -1,8 +1,9 @@
 import type { ValidationAcceptor, ValidationChecks } from 'langium';
-import type { BridgeAstType, BridgeModel, FieldMapping, FieldPath, Source, SourceTypes, SourceTypeDeclaration, Target } from './generated/ast.js';
+import type { BridgeAstType, BridgeModel, DefaultValue, FieldMapping, FieldPath, Source, SourceTypes, SourceTypeDeclaration, Target } from './generated/ast.js';
 import type { BridgeServices } from './bridge-module.js';
+import type { ConnectorRoleDescriptor } from './connector-descriptors/connector-descriptor.js';
 import { getConnectorDescriptor } from './connector-descriptors/connector-registry.js';
-import { getTransformationDescriptor } from './transformations/transformation-registry.js';
+import { getTransformationDescriptor, type TransformationDescriptor } from './transformations/transformation-registry.js';
 
 /**
  * Register custom validation checks.
@@ -112,31 +113,34 @@ export class BridgeValidator {
                 if (!transformation) {
                     continue;
                 }
+                let sourceCompatible = false;
                 if (!declaration || declaration.types.length === 0) {
                     accept('error', `Source field '${sourcePath}' used with transformation '${mapping.transformation}' must declare at least one type.`, {
                         node: mapping.source
                     });
-                    continue;
+                } else {
+                    sourceCompatible = true;
+                    const checkedTypes = new Set<string>();
+                    declaration.types.forEach((type, index) => {
+                        if (checkedTypes.has(type)) {
+                            return;
+                        }
+                        checkedTypes.add(type);
+                        if (!transformation.inputTypes.includes(type)) {
+                            sourceCompatible = false;
+                            accept('error', `Transformation '${transformation.name}' cannot accept type '${type}' declared for source field '${sourcePath}'.`, {
+                                node: declaration, property: 'types', index
+                            });
+                        }
+                    });
                 }
-                let compatible = true;
-                const checkedTypes = new Set<string>();
-                declaration.types.forEach((type, index) => {
-                    if (checkedTypes.has(type)) {
-                        return;
-                    }
-                    checkedTypes.add(type);
-                    if (!transformation.inputTypes.includes(type)) {
-                        compatible = false;
-                        accept('error', `Transformation '${transformation.name}' cannot accept type '${type}' declared for source field '${sourcePath}'.`, {
-                            node: declaration, property: 'types', index
-                        });
-                    }
-                });
-                if (compatible && target && !target.supportedTypes.includes(transformation.outputType)) {
+                const defaultCompatible = this.checkDefaultValueType(model, mapping, target, accept, transformation);
+                if ((sourceCompatible || defaultCompatible) && target && !target.supportedTypes.includes(transformation.outputType)) {
                     accept('error', `Target technology '${model.target.technology}' does not support type '${transformation.outputType}' produced by transformation '${transformation.name}' for field '${fieldPathToString(mapping.target)}'.`, {
                         node: mapping, property: 'transformation'
                     });
                 }
+                continue;
             } else if (declaration && target) {
                 for (const type of new Set(declaration.types)) {
                     if (!target.supportedTypes.includes(type)) {
@@ -146,7 +150,33 @@ export class BridgeValidator {
                     }
                 }
             }
+            this.checkDefaultValueType(model, mapping, target, accept);
         }
+    }
+
+    private checkDefaultValueType(model: BridgeModel, mapping: FieldMapping, target: ConnectorRoleDescriptor | undefined, accept: ValidationAcceptor, transformation?: TransformationDescriptor): boolean {
+        const defaultValue = mapping.defaultValue;
+        if (!defaultValue) {
+            return false;
+        }
+
+        const defaultType = getDefaultValueType(defaultValue);
+        if (transformation) {
+            if (!transformation.inputTypes.includes(defaultType)) {
+                accept('error', `Transformation '${transformation.name}' cannot accept default type '${defaultType}' for target field '${fieldPathToString(mapping.target)}'.`, {
+                    node: defaultValue
+                });
+                return false;
+            }
+            return true;
+        }
+
+        if (target && !target.supportedTypes.includes(defaultType)) {
+            accept('error', `Target technology '${model.target.technology}' does not support default type '${defaultType}' for field '${fieldPathToString(mapping.target)}'.`, {
+                node: defaultValue
+            });
+        }
+        return false;
     }
 
     checkDuplicateConnectorProperties(connector: Source | Target, accept: ValidationAcceptor): void {
@@ -319,4 +349,17 @@ function isProperPrefix(parentParts: string[], childParts: string[]): boolean {
 
 function fieldPathToString(fieldPath: FieldPath): string {
     return fieldPath.parts.join('.');
+}
+
+function getDefaultValueType(defaultValue: DefaultValue): string {
+    switch (defaultValue.$type) {
+        case 'StringDefaultValue':
+            return 'string';
+        case 'IntegerDefaultValue':
+            return 'integer';
+        case 'DecimalDefaultValue':
+            return 'decimal';
+        case 'BooleanDefaultValue':
+            return 'boolean';
+    }
 }

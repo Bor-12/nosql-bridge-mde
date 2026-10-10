@@ -1,0 +1,38 @@
+bridge DefaultErrorsBridge {
+    source MongoDB {
+        database "shop"
+        collection "products"
+    }
+
+    target DynamoDB {
+        table "Products"
+        partitionKey "id"
+    }
+
+    sourceTypes {
+        _id string 
+        price boolean
+        amount string
+    }
+
+    mapping {
+        _id -> id
+
+        // ERROR 1:
+        // El source declara boolean y toDecimal no acepta boolean.
+        // ERROR 2:
+        // El default true también es boolean y toDecimal tampoco lo acepta.
+        price -> price using toDecimal default true
+
+        // ERROR 3:
+        // Falta sourceTypes para "cost".
+        // ERROR 4:
+        // El default true tampoco es compatible con toDecimal.
+        cost -> cost using toDecimal default true
+
+        // ERROR 5:
+        // Transformación desconocida.
+        // No deberían aparecer errores derivados adicionales del default.
+        amount -> amount using UnknownTransformation default true
+    }
+}

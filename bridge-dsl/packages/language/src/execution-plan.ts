@@ -1,4 +1,4 @@
-import type { BridgeModel, FieldMapping, FieldPath } from './generated/ast.js';
+import type { BridgeModel, DefaultValue, FieldMapping, FieldPath } from './generated/ast.js';
 
 export interface SourcePlan {
     technology: string;
@@ -14,6 +14,25 @@ export interface MappingPlan {
     source: string;
     target: string;
     transformation?: string;
+    defaultValue?: MappingDefaultValue;
+}
+
+export type MappingDefaultValue =
+    | { type: 'string'; value: string }
+    | { type: 'integer'; value: number }
+    | { type: 'decimal'; value: number }
+    | { type: 'boolean'; value: boolean };
+function createDefaultValuePlan(defaultValue: DefaultValue): MappingDefaultValue {
+    switch (defaultValue.$type) {
+        case 'StringDefaultValue':
+            return { type: 'string', value: defaultValue.value };
+        case 'IntegerDefaultValue':
+            return { type: 'integer', value: defaultValue.value };
+        case 'DecimalDefaultValue':
+            return { type: 'decimal', value: defaultValue.value };
+        case 'BooleanDefaultValue':
+            return { type: 'boolean', value: defaultValue.value === 'true' };
+    }
 }
 
 export interface BridgeExecutionPlan {
@@ -63,6 +82,9 @@ function createMappingPlan(mapping: FieldMapping): MappingPlan {
     };
     if (mapping.transformation !== undefined) {
         plan.transformation = mapping.transformation;
+    }
+    if (mapping.defaultValue !== undefined) {
+        plan.defaultValue = createDefaultValuePlan(mapping.defaultValue);
     }
     return plan;
 }

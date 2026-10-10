@@ -66,10 +66,76 @@ describe('BridgeExecutionPlan generation', () => {
         expect(JSON.parse(JSON.stringify(plan))).not.toHaveProperty('sourceTypes');
         expect(plan.planVersion).toBe(1);
         expect(plan.mappings[1]).not.toHaveProperty('transformation');
+        expect(plan.mappings[1]).not.toHaveProperty('defaultValue');
         expect(JSON.parse(JSON.stringify(plan)).mappings).toEqual(expectedMappings);
         expect(plan.target.config).toEqual({ table: 'Products', partitionKey: 'id' });
         expect(plan.unmappedPolicy).toBe('drop');
         expect(plan.nullPolicy).toBe('preserve');
+    });
+
+    it.each([
+        {
+            mapping: 'status -> status default "ACTIVE"',
+            expected: { source: 'status', target: 'status', defaultValue: { type: 'string', value: 'ACTIVE' } }
+        },
+        {
+            mapping: 'stock -> stock default 0',
+            expected: { source: 'stock', target: 'stock', defaultValue: { type: 'integer', value: 0 } }
+        },
+        {
+            mapping: 'price -> price default 0.0',
+            expected: { source: 'price', target: 'price', defaultValue: { type: 'decimal', value: 0 } }
+        },
+        {
+            mapping: 'active -> active default false',
+            expected: { source: 'active', target: 'active', defaultValue: { type: 'boolean', value: false } }
+        }
+    ])('copies typed default values into mapping plans: $mapping', async ({ mapping, expected }) => {
+        const plan = await generatePlan(`
+            bridge DefaultBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                mapping { ${mapping} }
+            }
+        `);
+
+        expect(plan.mappings).toEqual([expected]);
+        expect(JSON.parse(JSON.stringify(plan)).mappings).toEqual([expected]);
+        expect(plan.planVersion).toBe(1);
+    });
+
+    it('copies transformation and default value together without changing mapping order', async () => {
+        const plan = await generatePlan(`
+            bridge DefaultBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                sourceTypes { price string }
+                mapping {
+                    name -> name
+                    price -> price using toDecimal default "0"
+                    active -> active default true
+                }
+            }
+        `);
+
+        expect(plan.mappings).toEqual([
+            { source: 'name', target: 'name' },
+            {
+                source: 'price',
+                target: 'price',
+                transformation: 'toDecimal',
+                defaultValue: { type: 'string', value: '0' }
+            },
+            { source: 'active', target: 'active', defaultValue: { type: 'boolean', value: true } }
+        ]);
+        expect(plan.mappings[0]).not.toHaveProperty('defaultValue');
+        expect(plan).not.toHaveProperty('sourceTypes');
+        expect(JSON.parse(JSON.stringify(plan))).not.toHaveProperty('sourceTypes');
+        expect(JSON.parse(JSON.stringify(plan)).mappings[1].defaultValue).toEqual({
+            type: 'string',
+            value: '0'
+        });
+        expect(plan.planVersion).toBe(1);
     });
 
     it.each(['source', 'target'] as const)('keeps a dynamic %s technology property inside config', async connector => {

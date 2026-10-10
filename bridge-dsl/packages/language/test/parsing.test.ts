@@ -1,4 +1,4 @@
-import type { BridgeModel } from '../src/generated/ast.js';
+import type { BridgeModel, DefaultValue } from '../src/generated/ast.js';
 import { createBridgeServices } from '../src/bridge-module.js';
 import { EmptyFileSystem } from 'langium';
 import { clearDocuments, parseHelper } from 'langium/test';
@@ -23,6 +23,22 @@ async function parseBridge(input: string): Promise<BridgeModel> {
     return document.parseResult.value;
 }
 
+function defaultSummary(defaultValue: DefaultValue | undefined) {
+    if (!defaultValue) {
+        return undefined;
+    }
+    switch (defaultValue.$type) {
+        case 'StringDefaultValue':
+        case 'IntegerDefaultValue':
+        case 'DecimalDefaultValue':
+        case 'BooleanDefaultValue':
+            return {
+                type: defaultValue.$type,
+                value: defaultValue.value
+            };
+    }
+}
+
 describe('Bridge DSL parsing', () => {
     it.each([undefined, 'toString', 'toInteger', 'toDecimal', 'foo'])('parses a mapping with transformation %s', async transformation => {
         const model = await parseBridge(`
@@ -36,6 +52,65 @@ describe('Bridge DSL parsing', () => {
         expect(model.mapping.mappings[0].source.parts).toEqual(['price']);
         expect(model.mapping.mappings[0].target.parts).toEqual(['amount']);
         expect(model.mapping.mappings[0].transformation).toBe(transformation);
+    });
+
+    it.each([
+        { mapping: 'name -> name', expected: undefined },
+        { mapping: 'status -> status default "ACTIVE"', expected: { type: 'StringDefaultValue', value: 'ACTIVE' } },
+        { mapping: 'stock -> stock default 0', expected: { type: 'IntegerDefaultValue', value: 0 } },
+        { mapping: 'stock -> stock default -1', expected: { type: 'IntegerDefaultValue', value: -1 } },
+        { mapping: 'price -> price default 12.5', expected: { type: 'DecimalDefaultValue', value: 12.5 } },
+        { mapping: 'price -> price default -0.25', expected: { type: 'DecimalDefaultValue', value: -0.25 } },
+        { mapping: 'active -> active default true', expected: { type: 'BooleanDefaultValue', value: 'true' } },
+        { mapping: 'active -> active default false', expected: { type: 'BooleanDefaultValue', value: 'false' } }
+    ])('parses mapping default: $mapping', async ({ mapping, expected }) => {
+        const model = await parseBridge(`
+            bridge DefaultBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                mapping { ${mapping} }
+            }
+        `);
+
+        expect(defaultSummary(model.mapping.mappings[0].defaultValue)).toEqual(expected);
+    });
+
+    it('parses a transformation followed by a default', async () => {
+        const model = await parseBridge(`
+            bridge DefaultBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                mapping { price -> price using toDecimal default "0" }
+            }
+        `);
+
+        expect(model.mapping.mappings[0].transformation).toBe('toDecimal');
+        expect(defaultSummary(model.mapping.mappings[0].defaultValue)).toEqual({
+            type: 'StringDefaultValue',
+            value: '0'
+        });
+    });
+
+    it('keeps scalar default literal kinds distinct in the AST', async () => {
+        const model = await parseBridge(`
+            bridge DefaultBridge {
+                source MongoDB {}
+                target DynamoDB {}
+                mapping {
+                    stock -> stock default 0
+                    price -> price default 0.0
+                    code -> code default "0"
+                    active -> active default false
+                }
+            }
+        `);
+
+        expect(model.mapping.mappings.map(mapping => defaultSummary(mapping.defaultValue))).toEqual([
+            { type: 'IntegerDefaultValue', value: 0 },
+            { type: 'DecimalDefaultValue', value: 0 },
+            { type: 'StringDefaultValue', value: '0' },
+            { type: 'BooleanDefaultValue', value: 'false' }
+        ]);
     });
 
     it('parses mixed mappings and nested paths with transformations', async () => {
@@ -66,7 +141,10 @@ describe('Bridge DSL parsing', () => {
         'price -> price using toDecimal using toString',
         'price -> price using toDecimal(2)',
         'price -> price using "toDecimal"',
-        'price -> price default 0',
+        'price -> price default "0" using toDecimal',
+        'price -> price default null',
+        'price -> price default [1, 2]',
+        'price -> price default {"active": true}',
         'firstName + lastName -> name'
     ])('rejects unsupported mapping syntax: %s', async mapping => {
         const document = await parse(`
