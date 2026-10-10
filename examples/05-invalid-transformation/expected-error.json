@@ -1,7 +1,0 @@
-{
-  "errorType": "TRANSFORMATION_ERROR",
-  "sourceField": "price",
-  "targetField": "price",
-  "transformation": "toNumber",
-  "value": "not-a-number"
-}
