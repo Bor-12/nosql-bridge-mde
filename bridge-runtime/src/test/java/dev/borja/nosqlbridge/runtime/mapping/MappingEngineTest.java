@@ -24,6 +24,7 @@ class MappingEngineTest {
 
     private LogicalPathResolver pathResolver;
     private TransformationEngine transformationEngine;
+    private DefaultValueConverter defaultValueConverter;
     private MappingEngine engine;
     private LogicalRecord source;
 
@@ -31,7 +32,8 @@ class MappingEngineTest {
     void setUp() {
         pathResolver = new LogicalPathResolver();
         transformationEngine = new TransformationEngine();
-        engine = new MappingEngine(pathResolver, transformationEngine);
+        defaultValueConverter = new DefaultValueConverter();
+        engine = new MappingEngine(pathResolver, transformationEngine, defaultValueConverter);
         LogicalValue.ObjectValue category = new LogicalValue.ObjectValue(Map.of(
                 "name", new LogicalValue.StringValue("Informatica")));
         source = new LogicalRecord(Map.of(
@@ -100,15 +102,42 @@ class MappingEngineTest {
     }
 
     @Test
-    void ignoresDefaults() {
+    void appliesStringDefaultWhenSourceFieldIsMissing() {
         MappingDefaultValue defaultValue = new MappingDefaultValue("string", "Fallback");
-        List<MappingPlan> mappings = List.of(
-                new MappingPlan("stock", "quantity", null, defaultValue),
-                new MappingPlan("missing", "absent", null, defaultValue));
-        LogicalRecord result = engine.map(source, mappings);
+        LogicalRecord result = engine.map(source,
+                List.of(new MappingPlan("missing", "title", null, defaultValue)));
 
-        assertEquals(Map.of("quantity", new LogicalValue.IntegerValue(10)), result.fields());
+        assertEquals(new LogicalValue.StringValue("Fallback"), result.get("title"));
     }
+
+    @Test
+    void appliesDefaultWhenSourceFieldIsLogicalNull() {
+        MappingDefaultValue defaultValue = new MappingDefaultValue("string", "Fallback");
+        LogicalRecord result = engine.map(source,
+                List.of(new MappingPlan("description", "details", null, defaultValue)));
+
+        assertEquals(new LogicalValue.StringValue("Fallback"), result.get("details"));
+    }
+
+    @Test
+    void ignoresDefaultWhenSourceFieldHasValue() {
+        MappingDefaultValue defaultValue = new MappingDefaultValue("string", "Fallback");
+        LogicalRecord result = engine.map(source,
+                List.of(new MappingPlan("name", "title", null, defaultValue)));
+
+        assertEquals(new LogicalValue.StringValue("Product"), result.get("title"));
+    }
+
+    @Test
+    void appliesDefaultBeforeTransformation() {
+        MappingDefaultValue defaultValue = new MappingDefaultValue("string", "25");
+        LogicalRecord result = engine.map(source,
+                List.of(new MappingPlan("missing", "quantity", "toInteger", defaultValue)));
+
+        assertEquals(new LogicalValue.IntegerValue(25), result.get("quantity"));
+    }
+
+
 
     @Test
     void treatsTargetPathAsLiteralFieldName() {
@@ -154,6 +183,16 @@ class MappingEngineTest {
     @Test
     void propagatesInvalidTransformationException() {
         List<MappingPlan> mappings = List.of(new MappingPlan("stock", "quantity", "unknown", null));
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> engine.map(source, mappings));
+        assertEquals("Unknown transformation: unknown", exception.getMessage());
+    }
+
+    @Test
+    void propagatesInvalidTransformationExceptionForDefaultValue() {
+        MappingDefaultValue defaultValue = new MappingDefaultValue("string", "Fallback");
+        List<MappingPlan> mappings = List.of(new MappingPlan("missing", "title", "unknown", defaultValue));
 
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
                 () -> engine.map(source, mappings));

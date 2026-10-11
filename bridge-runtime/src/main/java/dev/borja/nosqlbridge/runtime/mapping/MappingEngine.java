@@ -14,18 +14,25 @@ public class MappingEngine {
 
     private final LogicalPathResolver pathResolver;
     private final TransformationEngine transformationEngine;
+    private final DefaultValueConverter defaultValueConverter;
 
     public MappingEngine(
             LogicalPathResolver pathResolver,
-            TransformationEngine transformationEngine) {
+            TransformationEngine transformationEngine,
+            DefaultValueConverter defaultValueConverter) {
         this.pathResolver = pathResolver;
         this.transformationEngine = transformationEngine;
+        this.defaultValueConverter = defaultValueConverter;
     }
 
     public LogicalRecord map(LogicalRecord source, List<MappingPlan> mappings) {
         Map<String, LogicalValue> fields = new HashMap<>();
         for (MappingPlan mapping : mappings) {
             LogicalValue value = pathResolver.resolve(source, mapping.source());
+            if ((value == null || value instanceof LogicalValue.NullValue)
+                    && mapping.defaultValue() != null) {
+                value = defaultValueConverter.convert(mapping.defaultValue());
+            }
             if (value != null) {
                 LogicalValue transformedValue = transformationEngine.transform(
                         mapping.transformation(),
