@@ -25,10 +25,21 @@ public class MappingEngine {
         this.defaultValueConverter = defaultValueConverter;
     }
 
-    public LogicalRecord map(LogicalRecord source, List<MappingPlan> mappings, String nullPolicy) {
+    public LogicalRecord map(
+            LogicalRecord source,
+            List<MappingPlan> mappings,
+            String nullPolicy,
+            String unmappedPolicy) {
         validateNullPolicy(nullPolicy);
+        validateUnmappedPolicy(unmappedPolicy);
         Map<String, LogicalValue> fields = new HashMap<>();
+        if ("preserve".equals(unmappedPolicy)) {
+            fields.putAll(source.fields());
+        }
         for (MappingPlan mapping : mappings) {
+            if ("preserve".equals(unmappedPolicy)) {
+                fields.remove(getTopLevelSourceField(mapping.source()));
+            }
             LogicalValue value = pathResolver.resolve(source, mapping.source());
             if ((value == null || value instanceof LogicalValue.NullValue)
                     && mapping.defaultValue() != null) {
@@ -49,5 +60,19 @@ public class MappingEngine {
         if (!"preserve".equals(nullPolicy) && !"omit".equals(nullPolicy)) {
             throw new IllegalArgumentException("Unsupported null policy: " + nullPolicy);
         }
+    }
+
+    private void validateUnmappedPolicy(String unmappedPolicy) {
+        if (!"preserve".equals(unmappedPolicy) && !"drop".equals(unmappedPolicy)) {
+            throw new IllegalArgumentException("Unsupported unmapped policy: " + unmappedPolicy);
+        }
+    }
+
+    private String getTopLevelSourceField(String sourcePath) {
+        int separatorIndex = sourcePath.indexOf('.');
+        if (separatorIndex < 0) {
+            return sourcePath;
+        }
+        return sourcePath.substring(0, separatorIndex);
     }
 }
