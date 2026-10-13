@@ -47,7 +47,7 @@ class MappingEngineTest {
     @Test
     void mapsRootField() {
         LogicalRecord result = engine.map(source,
-                List.of(new MappingPlan("name", "title", null, null)));
+                List.of(new MappingPlan("name", "title", null, null)), "preserve");
 
         assertEquals(new LogicalValue.StringValue("Product"), result.get("title"));
         assertSame(source.get("name"), result.get("title"));
@@ -56,7 +56,7 @@ class MappingEngineTest {
     @Test
     void mapsNestedField() {
         LogicalRecord result = engine.map(source,
-                List.of(new MappingPlan("category.name", "categoryName", null, null)));
+                List.of(new MappingPlan("category.name", "categoryName", null, null)), "preserve");
 
         assertEquals(new LogicalValue.StringValue("Informatica"), result.get("categoryName"));
     }
@@ -67,7 +67,7 @@ class MappingEngineTest {
                 new MappingPlan("name", "title", null, null),
                 new MappingPlan("stock", "quantity", null, null),
                 new MappingPlan("category.name", "categoryName", null, null));
-        LogicalRecord result = engine.map(source, mappings);
+        LogicalRecord result = engine.map(source, mappings, "preserve");
 
         assertEquals(Map.of(
                 "title", new LogicalValue.StringValue("Product"),
@@ -76,27 +76,28 @@ class MappingEngineTest {
     }
 
     @Test
-    void omitsMissingSourceField() {
+    void missingFieldIsOmittedWithPreservePolicy() {
         LogicalRecord result = engine.map(source,
-                List.of(new MappingPlan("missing", "absent", "unknown", null)));
+                List.of(new MappingPlan("missing", "absent", "unknown", null)), "preserve");
 
         assertFalse(result.contains("absent"));
         assertTrue(result.fields().isEmpty());
     }
 
     @Test
-    void copiesLogicalNullValue() {
+    void preservesLogicalNullWhenPolicyIsPreserve() {
         LogicalRecord result = engine.map(source,
-                List.of(new MappingPlan("description", "details", "toInteger", null)));
+                List.of(new MappingPlan("description", "details", "toInteger", null)), "preserve");
 
         assertTrue(result.contains("details"));
+        assertEquals(new LogicalValue.NullValue(), result.get("details"));
         assertSame(source.get("description"), result.get("details"));
     }
 
     @Test
     void includesOnlyExplicitlyMappedFields() {
         LogicalRecord result = engine.map(source,
-                List.of(new MappingPlan("name", "title", null, null)));
+                List.of(new MappingPlan("name", "title", null, null)), "preserve");
 
         assertEquals(Map.of("title", new LogicalValue.StringValue("Product")), result.fields());
     }
@@ -105,7 +106,7 @@ class MappingEngineTest {
     void appliesStringDefaultWhenSourceFieldIsMissing() {
         MappingDefaultValue defaultValue = new MappingDefaultValue("string", "Fallback");
         LogicalRecord result = engine.map(source,
-                List.of(new MappingPlan("missing", "title", null, defaultValue)));
+                List.of(new MappingPlan("missing", "title", null, defaultValue)), "preserve");
 
         assertEquals(new LogicalValue.StringValue("Fallback"), result.get("title"));
     }
@@ -114,7 +115,7 @@ class MappingEngineTest {
     void appliesDefaultWhenSourceFieldIsLogicalNull() {
         MappingDefaultValue defaultValue = new MappingDefaultValue("string", "Fallback");
         LogicalRecord result = engine.map(source,
-                List.of(new MappingPlan("description", "details", null, defaultValue)));
+                List.of(new MappingPlan("description", "details", null, defaultValue)), "preserve");
 
         assertEquals(new LogicalValue.StringValue("Fallback"), result.get("details"));
     }
@@ -123,26 +124,24 @@ class MappingEngineTest {
     void ignoresDefaultWhenSourceFieldHasValue() {
         MappingDefaultValue defaultValue = new MappingDefaultValue("string", "Fallback");
         LogicalRecord result = engine.map(source,
-                List.of(new MappingPlan("name", "title", null, defaultValue)));
+                List.of(new MappingPlan("name", "title", null, defaultValue)), "preserve");
 
         assertEquals(new LogicalValue.StringValue("Product"), result.get("title"));
     }
 
     @Test
-    void appliesDefaultBeforeTransformation() {
+    void defaultIsTransformedBeforeResultIsWritten() {
         MappingDefaultValue defaultValue = new MappingDefaultValue("string", "25");
         LogicalRecord result = engine.map(source,
-                List.of(new MappingPlan("missing", "quantity", "toInteger", defaultValue)));
+                List.of(new MappingPlan("missing", "quantity", "toInteger", defaultValue)), "omit");
 
         assertEquals(new LogicalValue.IntegerValue(25), result.get("quantity"));
     }
 
-
-
     @Test
     void treatsTargetPathAsLiteralFieldName() {
         LogicalRecord result = engine.map(source,
-                List.of(new MappingPlan("name", "product.name", null, null)));
+                List.of(new MappingPlan("name", "product.name", null, null)), "preserve");
 
         assertEquals(new LogicalValue.StringValue("Product"), result.get("product.name"));
         assertFalse(result.contains("product"));
@@ -151,7 +150,7 @@ class MappingEngineTest {
     @Test
     void transformsRootFieldToString() {
         LogicalRecord result = engine.map(source,
-                List.of(new MappingPlan("stock", "quantity", "toString", null)));
+                List.of(new MappingPlan("stock", "quantity", "toString", null)), "preserve");
 
         assertEquals(new LogicalValue.StringValue("10"), result.get("quantity"));
     }
@@ -159,7 +158,7 @@ class MappingEngineTest {
     @Test
     void resolvesAndTransformsNestedField() {
         LogicalRecord result = engine.map(source,
-                List.of(new MappingPlan("category.name", "categoryName", "toString", null)));
+                List.of(new MappingPlan("category.name", "categoryName", "toString", null)), "preserve");
 
         assertEquals(new LogicalValue.StringValue("Informatica"), result.get("categoryName"));
     }
@@ -167,7 +166,7 @@ class MappingEngineTest {
     @Test
     void transformsNumericStringToInteger() {
         LogicalRecord result = engine.map(source,
-                List.of(new MappingPlan("numericText", "quantity", "toInteger", null)));
+                List.of(new MappingPlan("numericText", "quantity", "toInteger", null)), "preserve");
 
         assertEquals(new LogicalValue.IntegerValue(25), result.get("quantity"));
     }
@@ -175,7 +174,7 @@ class MappingEngineTest {
     @Test
     void transformsIntegerToDecimal() {
         LogicalRecord result = engine.map(source,
-                List.of(new MappingPlan("stock", "quantity", "toDecimal", null)));
+                List.of(new MappingPlan("stock", "quantity", "toDecimal", null)), "preserve");
 
         assertEquals(new LogicalValue.DecimalValue(BigDecimal.valueOf(10)), result.get("quantity"));
     }
@@ -185,7 +184,7 @@ class MappingEngineTest {
         List<MappingPlan> mappings = List.of(new MappingPlan("stock", "quantity", "unknown", null));
 
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
-                () -> engine.map(source, mappings));
+                () -> engine.map(source, mappings, "preserve"));
         assertEquals("Unknown transformation: unknown", exception.getMessage());
     }
 
@@ -195,7 +194,107 @@ class MappingEngineTest {
         List<MappingPlan> mappings = List.of(new MappingPlan("missing", "title", "unknown", defaultValue));
 
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
-                () -> engine.map(source, mappings));
+                () -> engine.map(source, mappings, "omit"));
         assertEquals("Unknown transformation: unknown", exception.getMessage());
+    }
+
+    @Test
+    void omitsLogicalNullWhenPolicyIsOmit() {
+        LogicalRecord result = engine.map(source,
+                List.of(new MappingPlan("description", "details", "toInteger", null)), "omit");
+
+        assertFalse(result.contains("details"));
+        assertTrue(result.fields().isEmpty());
+    }
+
+    @Test
+    void missingFieldIsOmittedWithOmitPolicy() {
+        LogicalRecord result = engine.map(source,
+                List.of(new MappingPlan("missing", "absent", "unknown", null)), "omit");
+
+        assertFalse(result.contains("absent"));
+        assertTrue(result.fields().isEmpty());
+    }
+
+    @Test
+    void defaultTakesPrecedenceOverOmitPolicyForLogicalNull() {
+        MappingDefaultValue defaultValue = new MappingDefaultValue("string", "Fallback");
+        LogicalRecord result = engine.map(source,
+                List.of(new MappingPlan("description", "details", null, defaultValue)), "omit");
+
+        assertTrue(result.contains("details"));
+        assertEquals(new LogicalValue.StringValue("Fallback"), result.get("details"));
+    }
+
+    @Test
+    void defaultTakesPrecedenceForMissingField() {
+        MappingDefaultValue defaultValue = new MappingDefaultValue("string", "Fallback");
+        LogicalRecord result = engine.map(source,
+                List.of(new MappingPlan("missing", "title", null, defaultValue)), "omit");
+
+        assertEquals(new LogicalValue.StringValue("Fallback"), result.get("title"));
+    }
+
+    @Test
+    void transformsDefaultForLogicalNullWithOmitPolicy() {
+        MappingDefaultValue defaultValue = new MappingDefaultValue("string", "25");
+        LogicalRecord result = engine.map(source,
+                List.of(new MappingPlan("description", "quantity", "toInteger", defaultValue)), "omit");
+
+        assertEquals(new LogicalValue.IntegerValue(25), result.get("quantity"));
+    }
+
+    @Test
+    void nullPolicyDoesNotAffectNormalValues() {
+        LogicalRecord result = engine.map(source,
+                List.of(new MappingPlan("numericText", "quantity", "toInteger", null)), "omit");
+
+        assertEquals(new LogicalValue.IntegerValue(25), result.get("quantity"));
+    }
+
+    @Test
+    void rejectsUnsupportedNullPolicy() {
+        List<MappingPlan> mappings = List.of(new MappingPlan("name", "title", null, null));
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> engine.map(source, mappings, "invalid"));
+
+        assertEquals("Unsupported null policy: invalid", exception.getMessage());
+    }
+
+    @Test
+    void rejectsUnsupportedNullPolicyWithNoMappings() {
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> engine.map(source, List.of(), "invalid"));
+
+        assertEquals("Unsupported null policy: invalid", exception.getMessage());
+    }
+
+    @Test
+    void rejectsNullPolicy() {
+        List<MappingPlan> mappings = List.of(new MappingPlan("name", "title", null, null));
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> engine.map(source, mappings, null));
+
+        assertEquals("Unsupported null policy: null", exception.getMessage());
+    }
+
+    @Test
+    void skipsTransformationForOmittedLogicalNull() {
+        LogicalRecord result = engine.map(source,
+                List.of(new MappingPlan("description", "details", "unknown", null)), "omit");
+
+        assertFalse(result.contains("details"));
+        assertTrue(result.fields().isEmpty());
+    }
+
+    @Test
+    void preservesLogicalNullWithUnknownTransformation() {
+        LogicalRecord result = engine.map(source,
+                List.of(new MappingPlan("description", "details", "unknown", null)), "preserve");
+
+        assertTrue(result.contains("details"));
+        assertSame(source.get("description"), result.get("details"));
     }
 }

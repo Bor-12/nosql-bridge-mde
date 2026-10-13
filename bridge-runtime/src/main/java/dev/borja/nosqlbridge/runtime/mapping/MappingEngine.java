@@ -25,7 +25,8 @@ public class MappingEngine {
         this.defaultValueConverter = defaultValueConverter;
     }
 
-    public LogicalRecord map(LogicalRecord source, List<MappingPlan> mappings) {
+    public LogicalRecord map(LogicalRecord source, List<MappingPlan> mappings, String nullPolicy) {
+        validateNullPolicy(nullPolicy);
         Map<String, LogicalValue> fields = new HashMap<>();
         for (MappingPlan mapping : mappings) {
             LogicalValue value = pathResolver.resolve(source, mapping.source());
@@ -33,7 +34,8 @@ public class MappingEngine {
                     && mapping.defaultValue() != null) {
                 value = defaultValueConverter.convert(mapping.defaultValue());
             }
-            if (value != null) {
+            if (value != null
+                    && (!(value instanceof LogicalValue.NullValue) || "preserve".equals(nullPolicy))) {
                 LogicalValue transformedValue = transformationEngine.transform(
                         mapping.transformation(),
                         value);
@@ -41,5 +43,11 @@ public class MappingEngine {
             }
         }
         return new LogicalRecord(fields);
+    }
+
+    private void validateNullPolicy(String nullPolicy) {
+        if (!"preserve".equals(nullPolicy) && !"omit".equals(nullPolicy)) {
+            throw new IllegalArgumentException("Unsupported null policy: " + nullPolicy);
+        }
     }
 }
