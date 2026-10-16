@@ -46,4 +46,55 @@ class PlanValidatorTest {
         return new BridgeExecutionPlan(planVersion, "TestBridge", source, target,
                 "preserve", "preserve", List.of());
     }
+
+    @Test
+    void rejectsNullPlan() {
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class, () -> validator.validate(null));
+        assertEquals("Execution plan must not be null.", exception.getMessage());
+    }
+
+    @Test
+    void rejectsMissingSource() {
+        source = null;
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class, () -> validator.validate(createPlan(1)));
+        assertEquals("Execution plan source must not be null.", exception.getMessage());
+    }
+
+    @Test
+    void rejectsMissingTarget() {
+        target = null;
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class, () -> validator.validate(createPlan(1)));
+        assertEquals("Execution plan target must not be null.", exception.getMessage());
+    }
+
+    @Test
+    void rejectsBlankSourceTechnology() {
+        source = new ConnectorPlan(" ", Map.of());
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class, () -> validator.validate(createPlan(1)));
+        assertEquals("Execution plan source technology must not be blank.", exception.getMessage());
+    }
+
+    @Test
+    void rejectsMissingTargetTechnology() {
+        target = new ConnectorPlan(null, Map.of());
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class, () -> validator.validate(createPlan(1)));
+        assertEquals("Execution plan target technology must not be blank.", exception.getMessage());
+    }
+
+    @Test
+    void acceptsOtherTechnologiesWithoutDependingOnInstalledConnectors() {
+        source = new ConnectorPlan("another-source", Map.of());
+        target = new ConnectorPlan("another-target", Map.of());
+
+        assertDoesNotThrow(() -> validator.validate(createPlan(1)));
+    }
 }
