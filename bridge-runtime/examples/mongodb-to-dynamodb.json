@@ -1,0 +1,78 @@
+{
+  "planVersion": 1,
+  "bridgeName": "LocalProductsFullBridge",
+  "source": {
+    "technology": "mongodb",
+    "config": {
+      "database": "shop",
+      "collection": "products"
+    }
+  },
+  "target": {
+    "technology": "dynamodb",
+    "config": {
+      "table": "Products",
+      "partitionKey": "id"
+    }
+  },
+  "unmappedPolicy": "drop",
+  "nullPolicy": "preserve",
+  "mappings": [
+    {
+      "source": "_id",
+      "target": "id",
+      "transformation": "toString"
+    },
+    {
+      "source": "name",
+      "target": "productName"
+    },
+    {
+      "source": "price",
+      "target": "price",
+      "transformation": "toDecimal",
+      "defaultValue": {
+        "type": "string",
+        "value": "0"
+      }
+    },
+    {
+      "source": "stock",
+      "target": "availableUnits",
+      "transformation": "toInteger",
+      "defaultValue": {
+        "type": "integer",
+        "value": 0
+      }
+    },
+    {
+      "source": "category.name",
+      "target": "department",
+      "transformation": "toString"
+    },
+    {
+      "source": "active",
+      "target": "active"
+    },
+    {
+      "source": "tags",
+      "target": "tags"
+    },
+    {
+      "source": "metadata",
+      "target": "metadata"
+    },
+    {
+      "source": "description",
+      "target": "description"
+    },
+    {
+      "source": "status",
+      "target": "status",
+      "defaultValue": {
+        "type": "string",
+        "value": "ACTIVE"
+      }
+    }
+  ]
+}
