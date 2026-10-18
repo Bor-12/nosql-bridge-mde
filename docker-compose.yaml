@@ -1,0 +1,28 @@
+name: nosql-bridge-local
+
+services:
+  mongodb:
+    image: mongodb/mongodb-community-server:8.0-ubi8
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+      - mongodb-config:/data/configdb
+
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    working_dir: /home/dynamodblocal
+    user: "0:0"
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/home/dynamodblocal/data"]
+    ports:
+      - "8000:8000"
+    volumes:
+      - dynamodb-data:/home/dynamodblocal/data
+
+volumes:
+  mongodb-data:
+    name: tfg-mongodb-data
+  mongodb-config:
+    name: tfg-mongodb-config
+  dynamodb-data:
+    name: tfg-dynamodb-data
