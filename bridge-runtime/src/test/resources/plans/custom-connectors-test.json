@@ -1,0 +1,9 @@
+{
+  "planVersion": 1,
+  "bridgeName": "CustomBridge",
+  "source": { "technology": "custom-source", "config": {} },
+  "target": { "technology": "custom-target", "config": {} },
+  "unmappedPolicy": "drop",
+  "nullPolicy": "preserve",
+  "mappings": [{ "source": "name", "target": "title" }]
+}

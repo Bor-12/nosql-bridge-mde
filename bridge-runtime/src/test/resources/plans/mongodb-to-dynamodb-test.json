@@ -1,0 +1,27 @@
+{
+  "planVersion": 1,
+  "bridgeName": "TestProductsBridge",
+  "source": {
+    "technology": "mongodb",
+    "config": {
+      "database": "shop",
+      "collection": "products"
+    }
+  },
+  "target": {
+    "technology": "dynamodb",
+    "config": {
+      "table": "Products",
+      "partitionKey": "id"
+    }
+  },
+  "unmappedPolicy": "drop",
+  "nullPolicy": "preserve",
+  "mappings": [
+    { "source": "_id", "target": "id", "transformation": "toString" },
+    { "source": "name", "target": "name" },
+    { "source": "price", "target": "price", "transformation": "toDecimal" },
+    { "source": "stock", "target": "stock", "transformation": "toInteger" },
+    { "source": "category.name", "target": "category", "transformation": "toString" }
+  ]
+}
