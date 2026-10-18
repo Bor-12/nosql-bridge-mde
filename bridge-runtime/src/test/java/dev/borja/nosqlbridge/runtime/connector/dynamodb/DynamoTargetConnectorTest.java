@@ -9,6 +9,8 @@ import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -82,56 +84,34 @@ class DynamoTargetConnectorTest {
         assertInvalidConfig(null, "table");
     }
 
-    @Test
-    void rejectsMissingTable() {
-        assertInvalidConfig(Map.of("partitionKey", "id"), "table");
-    }
-
-    @Test
-    void rejectsNullTable() {
+    @ParameterizedTest(name = "{0}: missing")
+    @ValueSource(strings = {"table", "partitionKey"})
+    void rejectsMissingRequiredConfig(String name) {
         Map<String, String> config = new HashMap<>(plan().config());
-        config.put("table", null);
-        assertInvalidConfig(config, "table");
+        config.remove(name);
+        assertInvalidConfig(config, name);
     }
 
-    @Test
-    void rejectsBlankTable() {
-        assertInvalidConfig(Map.of("table", " \t", "partitionKey", "id"), "table");
-    }
-
-    @Test
-    void rejectsMissingPartitionKey() {
-        assertInvalidConfig(Map.of("table", "Products"), "partitionKey");
-    }
-
-    @Test
-    void rejectsNullPartitionKey() {
+    @ParameterizedTest(name = "{0}: null")
+    @ValueSource(strings = {"table", "partitionKey", "sortKey"})
+    void rejectsPresentNullConfigValue(String name) {
         Map<String, String> config = new HashMap<>(plan().config());
-        config.put("partitionKey", null);
-        assertInvalidConfig(config, "partitionKey");
+        config.put(name, null);
+        assertInvalidConfig(config, name);
     }
 
-    @Test
-    void rejectsBlankPartitionKey() {
-        assertInvalidConfig(Map.of("table", "Products", "partitionKey", " \t"), "partitionKey");
+    @ParameterizedTest(name = "{0}: blank")
+    @ValueSource(strings = {"table", "partitionKey", "sortKey"})
+    void rejectsBlankConfigValue(String name) {
+        Map<String, String> config = new HashMap<>(plan().config());
+        config.put(name, " \t");
+        assertInvalidConfig(config, name);
     }
 
     @Test
     void acceptsAbsentSortKeyWithoutCallingClient() {
         new DynamoTargetConnector(dynamoDbClient, converter, plan());
         verifyNoInteractions(dynamoDbClient);
-    }
-
-    @Test
-    void rejectsBlankSortKey() {
-        assertInvalidConfig(Map.of("table", "Products", "partitionKey", "id", "sortKey", " \t"), "sortKey");
-    }
-
-    @Test
-    void rejectsPresentNullSortKey() {
-        Map<String, String> config = new HashMap<>(plan().config());
-        config.put("sortKey", null);
-        assertInvalidConfig(config, "sortKey");
     }
 
     @Test
@@ -162,6 +142,21 @@ class DynamoTargetConnectorTest {
     void rejectsNullPartitionKeyWithoutCallingClient() {
         assertInvalidRecord(new LogicalRecord(Map.of("id", new LogicalValue.NullValue())),
                 "DynamoDB key must not be NULL: id");
+    }
+
+    @Test
+    void rejectsNullConvertedPartitionKeyWithoutCallingClient() {
+        DynamoLogicalValueConverter injectedConverter = mock(DynamoLogicalValueConverter.class);
+        LogicalRecord record = record();
+        Map<String, AttributeValue> attributes = new HashMap<>();
+        attributes.put("id", null);
+        when(injectedConverter.toAttributeMap(record)).thenReturn(attributes);
+        connector = new DynamoTargetConnector(dynamoDbClient, injectedConverter, plan());
+
+        assertInvalidRecord(record, "DynamoDB key must not be NULL: id");
+
+        verify(injectedConverter).toAttributeMap(record);
+        verifyNoMoreInteractions(injectedConverter);
     }
 
     @Test

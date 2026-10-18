@@ -2,6 +2,7 @@ package dev.borja.nosqlbridge.runtime.transformation;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -143,6 +144,27 @@ class TransformationEngineTest {
                 () -> engine.transform("toInteger", value));
         assertTrue(exception.getMessage().contains("toInteger"));
         assertTrue(exception.getMessage().contains("BooleanValue"));
+    }
+
+    @Test
+    void rejectsObjectToString() {
+        LogicalValue.ObjectValue value = new LogicalValue.ObjectValue(Map.of(
+                "name", new LogicalValue.StringValue("Product")));
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> engine.transform("toString", value));
+
+        assertEquals("Transformation toString does not support ObjectValue.", exception.getMessage());
+    }
+
+    @Test
+    void rejectsBooleanToDecimal() {
+        LogicalValue.BooleanValue value = new LogicalValue.BooleanValue(true);
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> engine.transform("toDecimal", value));
+
+        assertEquals("Transformation toDecimal does not support BooleanValue.", exception.getMessage());
     }
 
     @Test

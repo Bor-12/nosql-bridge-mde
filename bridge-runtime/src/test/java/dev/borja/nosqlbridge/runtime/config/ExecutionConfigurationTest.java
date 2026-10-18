@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.core.NestedExceptionUtils;
 
 import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoClient;
@@ -72,6 +73,17 @@ class ExecutionConfigurationTest {
             assertNull(context.getStartupFailure());
             assertTrue(context.getBeansOfType(CommandLineRunner.class).isEmpty());
             verifyNoInteractions(mongoClient, dynamoDbClient);
+        });
+    }
+
+    @Test
+    void rejectsPresentBlankPlanPropertyDuringStartup() {
+        contextRunner.withPropertyValues("bridge.execution.plan=").run(context -> {
+            Throwable failure = context.getStartupFailure();
+            assertNotNull(failure);
+            Throwable cause = NestedExceptionUtils.getMostSpecificCause(failure);
+            assertTrue(cause instanceof IllegalArgumentException);
+            assertEquals("bridge.execution.plan must not be blank.", cause.getMessage());
         });
     }
 
