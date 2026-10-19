@@ -1,5 +1,6 @@
 import type { BridgeModel } from '../src/generated/ast.js';
 import { createBridgeServices } from '../src/bridge-module.js';
+import { isSupportedTransformation } from '../src/transformations/transformation-registry.js';
 import { EmptyFileSystem } from 'langium';
 import { clearDocuments, validationHelper } from 'langium/test';
 import { DiagnosticSeverity } from 'vscode-languageserver-types';
@@ -27,6 +28,16 @@ function bridgeWithMappings(mappings: string, targetConfig = 'table "Products" p
         }
     `;
 }
+
+describe('Transformation registry', () => {
+    it('recognizes a registered transformation', () => {
+        expect(isSupportedTransformation('toDecimal')).toBe(true);
+    });
+
+    it('rejects an unknown transformation', () => {
+        expect(isSupportedTransformation('UnknownTransformation')).toBe(false);
+    });
+});
 
 describe('Bridge transformation validation', () => {
     it.each([undefined, 'toString', 'toInteger', 'toDecimal'])('accepts transformation %s on a required partition key', async transformation => {
