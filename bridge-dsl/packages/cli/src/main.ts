@@ -21,7 +21,9 @@ export const generateAction = async (source: string, destination: string): Promi
 };
 
 export default function(): void {
-    const program = new Command();
+    const program = new Command()
+        .name('brg')
+        .description('Command-line interface for the NoSQL Bridge DSL.');
 
     program.version(JSON.parse(packageContent).version);
 

@@ -13,7 +13,7 @@
         "src"
     ],
     "bin": {
-        "bridge-cli": "./bin/cli.js"
+        "brg": "./bin/cli.js"
     },
     "scripts": {
         "clean": "shx rm -fr *.tsbuildinfo out",
