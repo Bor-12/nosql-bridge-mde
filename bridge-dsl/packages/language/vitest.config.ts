@@ -9,6 +9,12 @@ export default defineConfig({
         deps: {
             interopDefault: true
         },
-        include: ['**/*.test.ts']
+        include: ['**/*.test.ts'],
+        coverage: {
+            provider: 'v8',
+            include: ['src/**/*.ts'],
+            exclude: ['src/generated/**', 'src/bridge-module.ts'],
+            reporter: [['text', { skipFull: false }], 'html', 'json', 'json-summary']
+        }
     }
 });

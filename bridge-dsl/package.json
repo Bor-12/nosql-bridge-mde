@@ -11,7 +11,10 @@
         "build:clean": "npm run clean && npm run build",
         "langium:generate": "npm run --workspace packages/language langium:generate",
         "langium:watch": "npm run --workspace packages/language langium:watch",
-        "test": "npm run build && npm run test --workspaces --if-present"
+        "test": "npm run build && npm run test --workspaces --if-present",
+        "coverage": "npm run coverage --workspaces --if-present",
+        "coverage:language": "npm run --workspace packages/language coverage",
+        "coverage:cli": "npm run --workspace packages/cli coverage"
     },
     "devDependencies": {
         "@types/node": "~20.19.43",
