@@ -1,5 +1,4 @@
 import type { AstNode, LangiumCoreServices, LangiumDocument } from 'langium';
-import chalk from 'chalk';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { URI } from 'langium';
@@ -7,13 +6,11 @@ import { URI } from 'langium';
 export async function extractDocument(fileName: string, services: LangiumCoreServices): Promise<LangiumDocument> {
     const extensions = services.LanguageMetaData.fileExtensions;
     if (!extensions.includes(path.extname(fileName))) {
-        console.error(chalk.yellow(`Please choose a file with one of these extensions: ${extensions}.`));
-        process.exit(1);
+        throw new Error(`Please choose a file with one of these extensions: ${extensions}.`);
     }
 
     if (!fs.existsSync(fileName)) {
-        console.error(chalk.red(`File ${fileName} does not exist.`));
-        process.exit(1);
+        throw new Error(`File ${fileName} does not exist.`);
     }
 
     const document = await services.shared.workspace.LangiumDocuments.getOrCreateDocument(URI.file(path.resolve(fileName)));
@@ -21,13 +18,10 @@ export async function extractDocument(fileName: string, services: LangiumCoreSer
 
     const validationErrors = (document.diagnostics ?? []).filter(e => e.severity === 1);
     if (validationErrors.length > 0) {
-        console.error(chalk.red('There are validation errors:'));
-        for (const validationError of validationErrors) {
-            console.error(chalk.red(
-                `line ${validationError.range.start.line + 1}: ${validationError.message} [${document.textDocument.getText(validationError.range)}]`
-            ));
-        }
-        process.exit(1);
+        const diagnostics = validationErrors.map(validationError =>
+            `line ${validationError.range.start.line + 1}: ${validationError.message} [${document.textDocument.getText(validationError.range)}]`
+        );
+        throw new Error(['There are validation errors:', ...diagnostics].join('\n'));
     }
 
     return document;

@@ -18,7 +18,8 @@
     "scripts": {
         "clean": "shx rm -fr *.tsbuildinfo out",
         "build": "echo 'No build step'",
-        "build:clean": "npm run clean && npm run build"
+        "build:clean": "npm run clean && npm run build",
+        "test": "vitest run"
     },
     "dependencies": {
         "bridge-language": "0.0.1",
