@@ -1,6 +1,6 @@
-import type { BridgeModel } from '../src/generated/ast.js';
-import { createBridgeServices } from '../src/bridge-module.js';
-import { isSupportedTransformation } from '../src/transformations/transformation-registry.js';
+import type { BridgeModel } from '../../src/generated/ast.js';
+import { createBridgeServices } from '../../src/bridge-module.js';
+import { isSupportedTransformation } from '../../src/transformations/transformation-registry.js';
 import { EmptyFileSystem } from 'langium';
 import { clearDocuments, validationHelper } from 'langium/test';
 import { DiagnosticSeverity } from 'vscode-languageserver-types';

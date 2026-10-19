@@ -1,6 +1,6 @@
-import type { BridgeModel } from '../src/generated/ast.js';
-import { createBridgeServices } from '../src/bridge-module.js';
-import { createExecutionPlan } from '../src/execution-plan.js';
+import type { BridgeModel } from '../../src/generated/ast.js';
+import { createBridgeServices } from '../../src/bridge-module.js';
+import { createExecutionPlan } from '../../src/execution-plan.js';
 import { EmptyFileSystem } from 'langium';
 import { clearDocuments, parseHelper } from 'langium/test';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';

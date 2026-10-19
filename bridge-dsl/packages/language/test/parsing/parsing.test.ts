@@ -1,5 +1,5 @@
-import type { BridgeModel, DefaultValue } from '../src/generated/ast.js';
-import { createBridgeServices } from '../src/bridge-module.js';
+import type { BridgeModel, DefaultValue } from '../../src/generated/ast.js';
+import { createBridgeServices } from '../../src/bridge-module.js';
 import { EmptyFileSystem } from 'langium';
 import { clearDocuments, parseHelper } from 'langium/test';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';

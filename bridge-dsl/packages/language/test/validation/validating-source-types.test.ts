@@ -1,5 +1,5 @@
-import type { BridgeModel } from '../src/generated/ast.js';
-import { createBridgeServices } from '../src/bridge-module.js';
+import type { BridgeModel } from '../../src/generated/ast.js';
+import { createBridgeServices } from '../../src/bridge-module.js';
 import { EmptyFileSystem } from 'langium';
 import { clearDocuments, validationHelper } from 'langium/test';
 import { DiagnosticSeverity } from 'vscode-languageserver-types';

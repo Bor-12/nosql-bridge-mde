@@ -1,5 +1,5 @@
-import type { BridgeModel } from '../src/generated/ast.js';
-import type { ConnectorDescriptor } from '../src/connector-descriptors/connector-descriptor.js';
+import type { BridgeModel } from '../../src/generated/ast.js';
+import type { ConnectorDescriptor } from '../../src/connector-descriptors/connector-descriptor.js';
 import { EmptyFileSystem } from 'langium';
 import { clearDocuments, validationHelper } from 'langium/test';
 import { DiagnosticSeverity } from 'vscode-languageserver-types';
@@ -36,7 +36,7 @@ const mongoDescriptor: ConnectorDescriptor = {
 
 async function createIsolatedValidate() {
     vi.resetModules();
-    vi.doMock('../src/connector-descriptors/connector-registry.js', () => ({
+    vi.doMock('../../src/connector-descriptors/connector-registry.js', () => ({
         getConnectorDescriptor: (technology: string): ConnectorDescriptor | undefined => {
             switch (technology.toLowerCase()) {
                 case 'mongodb':
@@ -52,7 +52,7 @@ async function createIsolatedValidate() {
         }
     }));
 
-    const { createBridgeServices } = await import('../src/bridge-module.js');
+    const { createBridgeServices } = await import('../../src/bridge-module.js');
     const services = createBridgeServices(EmptyFileSystem);
     return {
         services,
@@ -84,13 +84,13 @@ async function check(input: string) {
     expect(result.document.parseResult.parserErrors).toEqual([]);
     expect(result.diagnostics.every(diagnostic => diagnostic.severity === DiagnosticSeverity.Error)).toBe(true);
     await clearDocuments(services.shared);
-    vi.doUnmock('../src/connector-descriptors/connector-registry.js');
+    vi.doUnmock('../../src/connector-descriptors/connector-registry.js');
     vi.resetModules();
     return result;
 }
 
 afterEach(() => {
-    vi.doUnmock('../src/connector-descriptors/connector-registry.js');
+    vi.doUnmock('../../src/connector-descriptors/connector-registry.js');
     vi.resetModules();
 });
 
