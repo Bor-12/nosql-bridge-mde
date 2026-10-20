@@ -158,12 +158,42 @@ describe('brg compile', () => {
 });
 
 describe('CLI public commands', () => {
-    it('exposes validate and compile without the legacy generate command', () => {
+    it('documents the runtime option and its precedence in run help', () => {
+        const result = run('run', '--help');
+
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain('--runtime <file>');
+        expect(result.stdout).not.toContain('--keep-plan');
+        expect(result.stdout).toContain('-o, --output <file>');
+        expect(result.stdout).toMatch(/Java runtime JAR \(takes precedence over\s+BRG_RUNTIME_JAR\)/);
+        expect(result.stderr).toBe('');
+    });
+
+    it('continues documenting output selection for compile', () => {
+        const result = run('compile', '--help');
+
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain('-o, --output <file>');
+        expect(result.stdout).not.toContain('--keep-plan');
+    });
+
+    it('rejects --keep-plan without creating a plan', () => {
+        copyFixture('minimal.brg');
+
+        const result = run('run', 'minimal.brg', '--keep-plan');
+
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain("unknown option '--keep-plan'");
+        expect(readdirSync(directory)).toEqual(['minimal.brg']);
+    });
+
+    it('exposes validate, compile and run without the legacy generate command', () => {
         const result = run('--help');
 
         expect(result.status).toBe(0);
         expect(result.stdout).toContain('validate <file>');
         expect(result.stdout).toContain('compile [options] <file>');
+        expect(result.stdout).toContain('run [options] <file>');
         expect(result.stdout).not.toContain('generate');
         expect(result.stderr).toBe('');
     });
