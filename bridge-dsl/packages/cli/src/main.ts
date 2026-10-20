@@ -3,7 +3,7 @@ import { createBridgeServices, BridgeLanguageMetaData } from 'bridge-language';
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { extractAstNode, extractDocument } from './util.js';
-import { generateOutput } from './generator.js';
+import { writeExecutionPlan } from './execution-plan-writer.js';
 import { NodeFileSystem } from 'langium/node';
 import * as url from 'node:url';
 import * as fs from 'node:fs/promises';
@@ -13,11 +13,15 @@ const __dirname = url.fileURLToPath(new URL('.', import.meta.url));
 const packagePath = path.resolve(__dirname, '..', 'package.json');
 const packageContent = await fs.readFile(packagePath, 'utf-8');
 
-export const generateAction = async (source: string, destination: string): Promise<void> => {
+export const compileAction = async (source: string, options: { output?: string } = {}): Promise<void> => {
     const services = createBridgeServices(NodeFileSystem).Bridge;
     const model = await extractAstNode<BridgeModel>(source, services);
-    const generatedFilePath = generateOutput(model, source, destination);
-    console.log(chalk.green(`Code generated succesfully: ${generatedFilePath}`));
+    const destination = options.output ?? path.join(
+        path.dirname(source),
+        `${path.basename(source, path.extname(source))}.plan.json`
+    );
+    const planPath = writeExecutionPlan(model, destination);
+    console.log(chalk.green(`Compiled execution plan: ${planPath}`));
 };
 
 export const validateAction = async (source: string): Promise<void> => {
@@ -41,11 +45,11 @@ export default async function(): Promise<void> {
         .action(validateAction);
 
     program
-        .command('generate')
+        .command('compile')
         .argument('<file>', `source file (possible file extensions: ${fileExtensions})`)
-        .argument('<destination>', 'destination file')
-        .description('Generates code for a provided source file.')
-        .action(generateAction);
+        .option('-o, --output <file>', 'output plan file (default: <source-name>.plan.json beside the source)')
+        .description('Compiles a BRG model to a BridgeExecutionPlan JSON file.')
+        .action(compileAction);
 
     try {
         await program.parseAsync(process.argv);

@@ -2,9 +2,8 @@ import { createExecutionPlan, type BridgeModel } from 'bridge-language';
 import * as fs from 'node:fs';
 import { extractDestinationAndName } from './util.js';
 
-export function generateOutput(
+export function writeExecutionPlan(
     model: BridgeModel,
-    source: string,
     destination: string
 ): string {
     const data = extractDestinationAndName(destination);

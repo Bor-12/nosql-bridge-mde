@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -94,29 +94,85 @@ describe('brg validate', () => {
     });
 });
 
-describe('brg generate compatibility', () => {
-    it('still generates an execution plan from a valid model', () => {
-        copyFixture('minimal.brg');
+describe('brg compile', () => {
+    it.each(['minimal.brg', path.join('models', 'minimal.brg')])('writes the default plan beside %s', source => {
+        const sourcePath = path.join(directory, source);
+        mkdirSync(path.dirname(sourcePath), { recursive: true });
+        copyFileSync(path.join(fixtures, 'minimal.brg'), sourcePath);
+        const output = path.join(path.dirname(source), 'minimal.plan.json');
 
-        const result = run('generate', 'minimal.brg', 'plan.json');
+        const result = run('compile', source);
 
         expect(result.status).toBe(0);
-        expect(result.stdout).toContain('Code generated succesfully: plan.json');
+        expect(result.stdout).toContain(`Compiled execution plan: ${output}`);
+        expect(result.stderr).toBe('');
+        expect(JSON.parse(readFileSync(path.join(directory, output), 'utf8'))).toMatchObject({
+            planVersion: 1,
+            bridgeName: 'ProductBridge'
+        });
+        expect(readdirSync(path.dirname(sourcePath)).sort()).toEqual(['minimal.brg', 'minimal.plan.json']);
+        expect(readFileSync(sourcePath, 'utf8')).toBe(readFileSync(path.join(fixtures, 'minimal.brg'), 'utf8'));
+    });
+
+    it.each(['-o', '--output'])('uses exactly the output path provided with %s', option => {
+        copyFixture('minimal.brg');
+
+        const result = run('compile', 'minimal.brg', option, 'plan.json');
+
+        expect(result.status).toBe(0);
         expect(result.stderr).toBe('');
         expect(JSON.parse(readFileSync(path.join(directory, 'plan.json'), 'utf8'))).toMatchObject({
             planVersion: 1,
             bridgeName: 'ProductBridge'
         });
+        expect(readdirSync(directory).sort()).toEqual(['minimal.brg', 'plan.json']);
     });
 
-    it('still rejects invalid models before generating output', () => {
+    it.each([
+        { options: [] },
+        { options: ['-o', path.join('plans', 'invalid.json')] }
+    ])('rejects semantic errors before creating any output ($options)', ({ options }) => {
         copyFixture('default-errors.brg');
 
-        const result = run('generate', 'default-errors.brg', 'plan.json');
+        const result = run('compile', 'default-errors.brg', ...options);
 
         expect(result.status).toBe(1);
         expect(result.stdout).toBe('');
         expect(result.stderr).toContain('There are validation errors:');
+        expect(result.stderr).toContain("Unknown transformation 'UnknownTransformation'.");
+        expect(result.stderr.match(/^line \d+:/gm)).toHaveLength(5);
         expect(readdirSync(directory)).toEqual(['default-errors.brg']);
+    });
+
+    it('rejects syntax errors without leaving a partial plan', () => {
+        const source = readFileSync(path.join(fixtures, 'minimal.brg'), 'utf8');
+        writeFileSync(path.join(directory, 'syntax-error.brg'), source.trimEnd().slice(0, -1));
+
+        const result = run('compile', 'syntax-error.brg');
+
+        expect(result.status).toBe(1);
+        expect(result.stdout).toBe('');
+        expect(result.stderr).toMatch(/line \d+: .*Expecting/);
+        expect(readdirSync(directory)).toEqual(['syntax-error.brg']);
+    });
+});
+
+describe('CLI public commands', () => {
+    it('exposes validate and compile without the legacy generate command', () => {
+        const result = run('--help');
+
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain('validate <file>');
+        expect(result.stdout).toContain('compile [options] <file>');
+        expect(result.stdout).not.toContain('generate');
+        expect(result.stderr).toBe('');
+    });
+
+    it('rejects the removed generate command', () => {
+        const result = run('generate', 'minimal.brg', 'plan.json');
+
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain("unknown command 'generate'");
+        expect(readdirSync(directory)).toEqual([]);
     });
 });

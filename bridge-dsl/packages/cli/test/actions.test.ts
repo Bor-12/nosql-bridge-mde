@@ -1,5 +1,5 @@
 import type { BridgeModel } from 'bridge-language';
-import { createBridgeServices } from 'bridge-language';
+import { createBridgeServices, createExecutionPlan } from 'bridge-language';
 import { clearDocuments } from 'langium/test';
 import { NodeFileSystem } from 'langium/node';
 import { copyFileSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { generateAction, validateAction } from '../src/main.js';
+import { compileAction, validateAction } from '../src/main.js';
 import { extractAstNode, extractDocument } from '../src/util.js';
 
 const fixtures = fileURLToPath(new URL('../../../test-inputs/', import.meta.url));
@@ -83,33 +83,37 @@ describe('CLI actions', () => {
         }
         const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-        await generateAction(source, output);
+        await compileAction(source, { output });
 
         const content = readFileSync(output, 'utf8');
         expect(content.endsWith('\n')).toBe(true);
-        expect(JSON.parse(content)).toMatchObject({
-            planVersion: 1,
-            bridgeName: 'ProductBridge',
-            source: { technology: 'mongodb', config: { database: 'shop', collection: 'products' } },
-            target: { technology: 'dynamodb', config: { table: 'Products', partitionKey: 'id' } },
-            mappings: expect.arrayContaining([
-                { source: '_id', target: 'id' },
-                { source: 'category.name', target: 'category' }
-            ])
-        });
-        expect(log).toHaveBeenCalledWith(expect.stringContaining(`Code generated succesfully: ${output}`));
+        const model = await extractAstNode<BridgeModel>(source, services.Bridge);
+        expect(JSON.parse(content)).toEqual(createExecutionPlan(model));
+        expect(log).toHaveBeenCalledWith(expect.stringContaining(`Compiled execution plan: ${output}`));
     });
 
-    it('propagates a filesystem error without reporting generation success', async () => {
+    it('propagates a filesystem error without reporting compilation success', async () => {
         const source = copyFixture();
         const blocker = path.join(directory, 'blocked');
         writeFileSync(blocker, 'keep this file');
         const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-        await expect(generateAction(source, path.join(blocker, 'plan.json'))).rejects.toThrow();
+        await expect(compileAction(source, { output: path.join(blocker, 'plan.json') })).rejects.toThrow();
 
         expect(log).not.toHaveBeenCalled();
         expect(readFileSync(blocker, 'utf8')).toBe('keep this file');
         expect(readdirSync(directory).sort()).toEqual(['blocked', 'minimal.brg']);
+    });
+
+    it('preserves an existing output plan when model validation fails', async () => {
+        const source = copyFixture('default-errors.brg');
+        const output = path.join(directory, 'previous.plan.json');
+        writeFileSync(output, 'previous plan');
+        const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+        await expect(compileAction(source, { output })).rejects.toThrow('There are validation errors:');
+
+        expect(readFileSync(output, 'utf8')).toBe('previous plan');
+        expect(log).not.toHaveBeenCalled();
     });
 });
