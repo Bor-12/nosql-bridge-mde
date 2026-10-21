@@ -12,6 +12,8 @@ coverage
 
 target
 *.class
+*.jar
+*.tgz
 
 
 .env

@@ -10,3 +10,4 @@ syntaxes/
 *.tsbuildinfo
 *.vsix
 /test-output/
+*.plan.json
