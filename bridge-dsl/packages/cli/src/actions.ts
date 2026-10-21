@@ -27,10 +27,10 @@ export const compileAction = async (source: string, options: { output?: string }
     compilePlan(model, source, options.output);
 };
 
-export const runAction = async (source: string, options: { output?: string; runtime?: string } = {}): Promise<void> => {
+export const runAction = async (source: string, options: { output?: string; runtime?: string; config?: string } = {}): Promise<void> => {
     const model = await loadModel(source);
     const planPath = compilePlan(model, source, options.output);
-    await launchRuntime(planPath, options.runtime);
+    await launchRuntime(planPath, options.config ?? '', options.runtime);
 };
 
 export const validateAction = async (source: string): Promise<void> => {

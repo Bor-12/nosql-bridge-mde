@@ -10,10 +10,13 @@ vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 
 let directory: string;
 let runtimeJar: string;
+let config: string;
 let child: ChildProcess;
 
 beforeEach(() => {
     directory = mkdtempSync(path.join(tmpdir(), 'brg-launcher-'));
+    config = path.join(directory, 'bridge config.yml');
+    writeFileSync(config, 'bridge: {}');
     runtimeJar = path.join(directory, 'runtime with spaces.jar');
     writeFileSync(runtimeJar, 'test artifact');
     vi.stubEnv('BRG_RUNTIME_JAR', runtimeJar);
@@ -35,14 +38,19 @@ function finishWith(code: number | null, signal: NodeJS.Signals | null = null) {
 }
 
 describe('Java runtime launcher', () => {
+    it.each(['missing', 'directory', 'blank'])('rejects %s configuration before starting Java', async kind => {
+        const value = kind === 'directory' ? directory : kind === 'blank' ? '' : path.join(directory, 'missing.yml');
+        await expect(launchRuntime('model.plan.json', value)).rejects.toThrow(/Config file/);
+        expect(spawn).not.toHaveBeenCalled();
+    });
     it('uses the public argument contract without a shell, inherits output and waits for completion', async () => {
         const plan = path.join('plans with spaces', 'model & data.plan.json');
         vi.stubEnv('BRG_RUNTIME_JAR', path.relative(process.cwd(), runtimeJar));
         let completed = false;
 
-        const running = launchRuntime(plan).then(() => { completed = true; });
+        const running = launchRuntime(plan, config).then(() => { completed = true; });
         await vi.waitFor(() => expect(spawn).toHaveBeenCalledExactlyOnceWith(
-            'java', ['-jar', runtimeJar, '--plan', plan], { stdio: 'inherit', shell: false }
+            'java', ['-jar', runtimeJar, '--plan', path.resolve(plan), '--config', config], { stdio: 'inherit', shell: false }
         ));
         expect(completed).toBe(false);
         child.emit('close', 0, null);
@@ -51,10 +59,11 @@ describe('Java runtime launcher', () => {
         expect(completed).toBe(true);
     });
 
-    it.each([undefined, '', '   '])('rejects missing or blank runtime configuration (%s)', async value => {
+    it.each(['', '   '])('rejects blank runtime configuration (%s)', async value => {
         vi.stubEnv('BRG_RUNTIME_JAR', value);
 
-        await expect(launchRuntime('model.plan.json')).rejects.toThrow('--runtime <file> or set BRG_RUNTIME_JAR');
+        await expect(launchRuntime('model.plan.json', config))
+            .rejects.toThrow(/nonblank path/);
 
         expect(spawn).not.toHaveBeenCalled();
     });
@@ -69,15 +78,15 @@ describe('Java runtime launcher', () => {
         }
         finishWith(0);
 
-        await expect(launchRuntime('model.plan.json', runtimeJar)).resolves.toBeUndefined();
+        await expect(launchRuntime('model.plan.json', config, runtimeJar)).resolves.toBeUndefined();
 
         expect(spawn).toHaveBeenCalledExactlyOnceWith(
-            'java', ['-jar', runtimeJar, '--plan', 'model.plan.json'], { stdio: 'inherit', shell: false }
+            'java', ['-jar', runtimeJar, '--plan', path.resolve('model.plan.json'), '--config', config], { stdio: 'inherit', shell: false }
         );
     });
 
     it.each(['', '   '])('rejects a blank explicit runtime without falling back to the environment (%s)', async value => {
-        await expect(launchRuntime('model.plan.json', value)).rejects.toThrow('--runtime <file> or set BRG_RUNTIME_JAR');
+        await expect(launchRuntime('model.plan.json', config, value)).rejects.toThrow(/nonblank path|Bridge Runtime is not installed/);
 
         expect(spawn).not.toHaveBeenCalled();
     });
@@ -85,7 +94,7 @@ describe('Java runtime launcher', () => {
     it('rejects a nonexistent explicit JAR without falling back to a valid environment JAR', async () => {
         const missingJar = path.join(directory, 'missing.jar');
 
-        await expect(launchRuntime('model.plan.json', missingJar)).rejects.toThrow(`Cannot access runtime JAR: ${missingJar}`);
+        await expect(launchRuntime('model.plan.json', config, missingJar)).rejects.toThrow(`Cannot access Runtime JAR: ${missingJar}`);
 
         expect(spawn).not.toHaveBeenCalled();
     });
@@ -93,7 +102,7 @@ describe('Java runtime launcher', () => {
     it('rejects a nonexistent JAR before starting Java', async () => {
         vi.stubEnv('BRG_RUNTIME_JAR', path.join(directory, 'missing.jar'));
 
-        await expect(launchRuntime('model.plan.json')).rejects.toThrow('Cannot access runtime JAR:');
+        await expect(launchRuntime('model.plan.json', config)).rejects.toThrow('Cannot access Runtime JAR:');
 
         expect(spawn).not.toHaveBeenCalled();
     });
@@ -101,7 +110,7 @@ describe('Java runtime launcher', () => {
     it('rejects a directory configured as the JAR', async () => {
         vi.stubEnv('BRG_RUNTIME_JAR', directory);
 
-        await expect(launchRuntime('model.plan.json')).rejects.toThrow('Runtime JAR is not a file:');
+        await expect(launchRuntime('model.plan.json', config)).rejects.toThrow('Runtime JAR is not a file:');
 
         expect(spawn).not.toHaveBeenCalled();
     });
@@ -112,7 +121,7 @@ describe('Java runtime launcher', () => {
             return child;
         });
 
-        await expect(launchRuntime('model.plan.json')).rejects.toThrow(
+        await expect(launchRuntime('model.plan.json', config)).rejects.toThrow(
             'Could not start Java runtime: spawn java ENOENT. Check that Java 21 is available on PATH.'
         );
     });
@@ -120,7 +129,7 @@ describe('Java runtime launcher', () => {
     it('preserves a nonzero exit code', async () => {
         finishWith(7);
 
-        await expect(launchRuntime('model.plan.json')).rejects.toMatchObject({
+        await expect(launchRuntime('model.plan.json', config)).rejects.toMatchObject({
             constructor: RuntimeExitError, exitCode: 7, message: 'Java runtime exited with code 7.'
         });
     });
@@ -128,12 +137,12 @@ describe('Java runtime launcher', () => {
     it('reports termination by signal', async () => {
         finishWith(null, 'SIGTERM');
 
-        await expect(launchRuntime('model.plan.json')).rejects.toThrow('Java runtime terminated by signal SIGTERM.');
+        await expect(launchRuntime('model.plan.json', config)).rejects.toThrow('Java runtime terminated by signal SIGTERM.');
     });
 
     it('reports termination without an exit code', async () => {
         finishWith(null);
 
-        await expect(launchRuntime('model.plan.json')).rejects.toThrow('Java runtime exited without an exit code.');
+        await expect(launchRuntime('model.plan.json', config)).rejects.toThrow('Java runtime exited without an exit code.');
     });
 });

@@ -201,7 +201,8 @@ syncBuiltinESMExports();
     });
 
     function runWithRuntime(args: string[], env: NodeJS.ProcessEnv = {}) {
-        return invokeCli(args, {
+        writeFileSync(path.join(directory, 'bridge.yml'), 'bridge: {}');
+        return invokeCli([...args, '--config', 'bridge.yml'], {
             BRG_RUNTIME_JAR: runtimeJar,
             BRG_TEST_INVOCATION: invocation,
             BRG_TEST_EXIT_CODE: '0',
@@ -226,7 +227,7 @@ syncBuiltinESMExports();
         expect(JSON.parse(readFileSync(path.join(directory, output), 'utf8')).bridgeName).toBe('ProductBridge');
         expect(JSON.parse(readFileSync(invocation, 'utf8'))).toEqual({
             command: 'java',
-            args: ['-jar', explicitRuntime ? selectedRuntime : runtimeJar, '--plan', output],
+            args: ['-jar', explicitRuntime ? selectedRuntime : runtimeJar, '--plan', path.join(directory, output), '--config', path.join(directory, 'bridge.yml')],
             options: { stdio: 'inherit', shell: false }
         });
         if (output !== 'minimal.plan.json') {
@@ -246,6 +247,7 @@ syncBuiltinESMExports();
             expect(run('compile', source).status).toBe(0);
             source = 'minimal.plan.json';
         }
+        writeFileSync(path.join(directory, 'bridge.yml'), 'bridge: {}');
         const files = readdirSync(directory);
         const originalSource = readFileSync(path.join(directory, source), 'utf8');
 
@@ -284,6 +286,12 @@ syncBuiltinESMExports();
 });
 
 describe('CLI public commands', () => {
+    it('requires --config for run before loading the model or starting Java', () => {
+        const result = run('run', 'missing.brg');
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain("required option '--config <file>'");
+        expect(readdirSync(directory)).toEqual([]);
+    });
     it('documents the runtime option and its precedence in run help', () => {
         const result = run('run', '--help');
 
@@ -306,7 +314,7 @@ describe('CLI public commands', () => {
     it('rejects --keep-plan without creating a plan', () => {
         copyFixture('minimal.brg');
 
-        const result = run('run', 'minimal.brg', '--keep-plan');
+        const result = run('run', 'minimal.brg', '--config', 'bridge.yml', '--keep-plan');
 
         expect(result.status).toBe(1);
         expect(result.stderr).toContain("unknown option '--keep-plan'");

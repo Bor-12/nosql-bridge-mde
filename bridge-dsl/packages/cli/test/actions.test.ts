@@ -122,8 +122,11 @@ describe('CLI actions', () => {
 
 describe('Run action', () => {
     let source: string;
+    let config: string;
 
     beforeEach(() => {
+        config = path.join(directory, 'bridge.yml');
+        writeFileSync(config, 'bridge: {}');
         source = path.join(directory, 'model with spaces.brg');
         copyFileSync(path.join(fixtures, 'minimal.brg'), source);
         vi.spyOn(runtime, 'launchRuntime').mockResolvedValue();
@@ -137,44 +140,44 @@ describe('Run action', () => {
             expect(JSON.parse(readFileSync(plan, 'utf8')).bridgeName).toBe('ProductBridge');
         });
 
-        await expect(runAction(source)).resolves.toBeUndefined();
+        await expect(runAction(source, { config })).resolves.toBeUndefined();
         await compileAction(source, { output: compiled });
 
-        expect(runtime.launchRuntime).toHaveBeenCalledExactlyOnceWith(output, undefined);
+        expect(runtime.launchRuntime).toHaveBeenCalledExactlyOnceWith(output, config, undefined);
         expect(readFileSync(output, 'utf8')).toBe(readFileSync(compiled, 'utf8'));
         expect(readdirSync(directory).sort()).toEqual([
-            'compiled.json', 'model with spaces.brg', 'model with spaces.plan.json'
+            'bridge.yml', 'compiled.json', 'model with spaces.brg', 'model with spaces.plan.json'
         ]);
     });
 
     it('writes and retains the plan at the exact nested output path', async () => {
         const output = path.join(directory, 'new plans', 'custom.plan.json');
 
-        await runAction(source, { output });
+        await runAction(source, { config, output });
 
-        expect(runtime.launchRuntime).toHaveBeenCalledExactlyOnceWith(output, undefined);
+        expect(runtime.launchRuntime).toHaveBeenCalledExactlyOnceWith(output, config, undefined);
         expect(JSON.parse(readFileSync(output, 'utf8')).bridgeName).toBe('ProductBridge');
-        expect(readdirSync(directory).sort()).toEqual(['model with spaces.brg', 'new plans']);
+        expect(readdirSync(directory).sort()).toEqual(['bridge.yml', 'model with spaces.brg', 'new plans']);
     });
 
     it('combines output and runtime selection without changing the relative plan path', async () => {
         const output = path.relative(process.cwd(), path.join(directory, 'plans', 'custom.plan.json'));
         const runtimeJar = path.join(directory, 'selected runtime.jar');
 
-        await runAction(source, { output, runtime: runtimeJar });
+        await runAction(source, { config, output, runtime: runtimeJar });
 
-        expect(runtime.launchRuntime).toHaveBeenCalledExactlyOnceWith(output, runtimeJar);
+        expect(runtime.launchRuntime).toHaveBeenCalledExactlyOnceWith(output, config, runtimeJar);
         expect(JSON.parse(readFileSync(output, 'utf8')).planVersion).toBe(1);
-        expect(readdirSync(directory).sort()).toEqual(['model with spaces.brg', 'plans']);
+        expect(readdirSync(directory).sort()).toEqual(['bridge.yml', 'model with spaces.brg', 'plans']);
     });
 
     it('passes the selected runtime and the default plan path to the launcher', async () => {
         const runtimeJar = path.join(directory, 'selected runtime.jar');
         const output = path.join(directory, 'model with spaces.plan.json');
 
-        await runAction(source, { runtime: runtimeJar });
+        await runAction(source, { config, runtime: runtimeJar });
 
-        expect(runtime.launchRuntime).toHaveBeenCalledExactlyOnceWith(output, runtimeJar);
+        expect(runtime.launchRuntime).toHaveBeenCalledExactlyOnceWith(output, config, runtimeJar);
         expect(JSON.parse(readFileSync(output, 'utf8')).planVersion).toBe(1);
     });
 
@@ -191,7 +194,7 @@ describe('Run action', () => {
         }
         const files = readdirSync(directory);
 
-        await expect(runAction(source)).rejects.toThrow();
+        await expect(runAction(source, { config })).rejects.toThrow();
 
         expect(runtime.launchRuntime).not.toHaveBeenCalled();
         expect(readdirSync(directory)).toEqual(files);
@@ -203,7 +206,7 @@ describe('Run action', () => {
         const output = path.join(directory, 'model with spaces.plan.json');
         writeFileSync(output, 'previous plan');
 
-        await expect(runAction(source)).rejects.toThrow('validation errors');
+        await expect(runAction(source, { config })).rejects.toThrow('validation errors');
 
         expect(runtime.launchRuntime).not.toHaveBeenCalled();
         expect(readFileSync(output, 'utf8')).toBe('previous plan');
@@ -213,10 +216,10 @@ describe('Run action', () => {
         const failure = new Error('Cannot write plan');
         vi.spyOn(writer, 'writeExecutionPlan').mockImplementation(() => { throw failure; });
 
-        await expect(runAction(source)).rejects.toBe(failure);
+        await expect(runAction(source, { config })).rejects.toBe(failure);
 
         expect(runtime.launchRuntime).not.toHaveBeenCalled();
-        expect(readdirSync(directory)).toEqual(['model with spaces.brg']);
+        expect(readdirSync(directory)).toEqual(['bridge.yml', 'model with spaces.brg']);
         expect(console.log).not.toHaveBeenCalled();
     });
 
@@ -226,12 +229,12 @@ describe('Run action', () => {
         const content = readFileSync(plan, 'utf8');
         vi.mocked(console.log).mockClear();
 
-        await expect(runAction(plan)).rejects.toThrow('Please choose a file with one of these extensions: .brg.');
+        await expect(runAction(plan, { config })).rejects.toThrow('Please choose a file with one of these extensions: .brg.');
 
         expect(runtime.launchRuntime).not.toHaveBeenCalled();
         expect(console.log).not.toHaveBeenCalled();
         expect(readFileSync(plan, 'utf8')).toBe(content);
-        expect(readdirSync(directory).sort()).toEqual(['model with spaces.brg', 'model with spaces.plan.json']);
+        expect(readdirSync(directory).sort()).toEqual(['bridge.yml', 'model with spaces.brg', 'model with spaces.plan.json']);
     });
 
     it.each([
@@ -243,9 +246,9 @@ describe('Run action', () => {
         const planPath = path.join(directory, output ?? 'model with spaces.plan.json');
         vi.mocked(runtime.launchRuntime).mockRejectedValue(failure);
 
-        await expect(runAction(source, { output: planPath })).rejects.toBe(failure);
+        await expect(runAction(source, { config, output: planPath })).rejects.toBe(failure);
 
-        expect(runtime.launchRuntime).toHaveBeenCalledExactlyOnceWith(planPath, undefined);
+        expect(runtime.launchRuntime).toHaveBeenCalledExactlyOnceWith(planPath, config, undefined);
         expect(JSON.parse(readFileSync(planPath, 'utf8')).planVersion).toBe(1);
         expect(console.log).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('Compiled execution plan:'));
     });
