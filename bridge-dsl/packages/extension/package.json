@@ -1,7 +1,8 @@
 {
     "name": "vscode-bridge-dsl",
+    "private": true,
     "description": "The extension specific package",
-    "version": "0.0.1",
+    "version": "1.0.0",
     "displayName": "bridge-dsl",
     "type": "module",
     "engines": {
@@ -36,7 +37,7 @@
         "watch": "npm run build:prepare && concurrently -n tsc,esbuild -c blue,yellow \"tsc -b tsconfig.json --watch\" \"node esbuild.mjs --watch\""
     },
     "dependencies": {
-        "bridge-language": "0.0.1",
+        "bridge-language": "1.0.0",
         "vscode-languageclient": "~10.1.0",
         "vscode-languageserver": "~10.1.0"
     },
