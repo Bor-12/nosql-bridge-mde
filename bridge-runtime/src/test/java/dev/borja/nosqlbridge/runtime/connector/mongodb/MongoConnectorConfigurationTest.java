@@ -12,6 +12,7 @@ import dev.borja.nosqlbridge.runtime.connector.SourceConnectorFactory;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
@@ -20,6 +21,13 @@ import static org.mockito.Mockito.verifyNoInteractions;
 class MongoConnectorConfigurationTest {
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withUserConfiguration(MongoConnectorConfiguration.class);
+
+    @Test
+    void requiresMongoUri() {
+        contextRunner.run(context -> assertTrue(context.getStartupFailure() != null));
+        contextRunner.withPropertyValues("bridge.mongodb.uri= ")
+                .run(context -> assertTrue(context.getStartupFailure() != null));
+    }
 
     @Test
     void registersDefaultBeansAndCreatesClientFromUriOnlyWhenRequestedThenClosesIt() {
@@ -53,7 +61,7 @@ class MongoConnectorConfigurationTest {
         MongoLogicalValueConverter converter = new MongoLogicalValueConverter();
 
         try (MockedStatic<MongoClients> clients = mockStatic(MongoClients.class)) {
-            contextRunner.withBean(MongoClient.class, () -> client)
+            contextRunner.withPropertyValues("bridge.mongodb.uri=mongodb://localhost:27018").withBean(MongoClient.class, () -> client)
                     .withBean(MongoLogicalValueConverter.class, () -> converter)
                     .run(context -> {
                         assertNull(context.getStartupFailure());

@@ -1,0 +1,6 @@
+bridge:
+  mongodb:
+    uri: mongodb://localhost:27017
+  dynamodb:
+    endpoint: http://localhost:8000
+    region: us-east-1

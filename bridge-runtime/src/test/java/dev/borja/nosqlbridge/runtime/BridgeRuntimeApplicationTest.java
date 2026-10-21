@@ -30,6 +30,11 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
+import dev.borja.nosqlbridge.runtime.connector.mongodb.MongoProperties;
+import dev.borja.nosqlbridge.runtime.connector.dynamodb.DynamoProperties;
 
 class BridgeRuntimeApplicationTest {
 
@@ -65,6 +70,81 @@ class BridgeRuntimeApplicationTest {
     }
 
     @Test
+    void validatesBothFilesDuplicatesAndEmptyOptionsBeforeStartingSpring() throws Exception {
+        Path plan = fixture();
+        Path config = directory.resolve("bridge.yml");
+        Files.writeString(config, "bridge: {}\n");
+        for (String[] args : List.of(
+                new String[] {"--plan", plan.toString()},
+                new String[] {"--config", config.toString()},
+                new String[] {"--plan", plan.toString(), "--config", ""},
+                new String[] {"--plan", plan.toString(), "--config", "   "},
+                new String[] {"--plan", plan.toString(), "--config", "missing.yml"},
+                new String[] {"--plan", plan.toString(), "--config", directory.toString()},
+                new String[] {"--plan", directory.toString(), "--config", config.toString()},
+                new String[] {"--plan", plan.toString(), "--config", config.toString(), "--config", config.toString()},
+                new String[] {"--plan", plan.toString(), "--config", config.toString(), "--unknown", "x"})) {
+            SpringApplication application = mock(SpringApplication.class);
+            assertEquals(1, BridgeRuntimeApplication.run(application, error, args));
+            verifyNoInteractions(application);
+        }
+    }
+
+    @Test
+    void translatesEitherArgumentOrderAndClosesSpringContext() throws Exception {
+        Path plan = fixture();
+        Path config = directory.resolve("bridge config.yml");
+        Files.writeString(config, "bridge: {}\n");
+        for (String[] args : List.of(
+                new String[] {"--plan", plan.toString(), "--config", config.toString()},
+                new String[] {"--config", config.toString(), "--plan", plan.toString()})) {
+            var application = mock(SpringApplication.class);
+            var context = mock(ConfigurableApplicationContext.class);
+            when(application.run("--bridge.execution.plan=" + plan,
+                    "--spring.config.location=optional:classpath:/application.yaml," + config.toUri())).thenReturn(context);
+            assertEquals(0, BridgeRuntimeApplication.run(application, error, args));
+            verify(context).close();
+        }
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @EnableConfigurationProperties({MongoProperties.class, DynamoProperties.class})
+    static class PropertiesConfiguration {}
+
+    @Test
+    void loadsExternalYamlWithSpacesUsingRealSpringAndReportsMissingRequiredProperty() throws Exception {
+        Path plan = fixture();
+        Path config = directory.resolve("external config.yml");
+        Files.writeString(config, "bridge:\n  mongodb:\n    uri: mongodb://localhost:27019\n  dynamodb:\n    region: eu-west-1\n");
+        var application = new SpringApplication(PropertiesConfiguration.class);
+        application.addInitializers(context -> context.addApplicationListener(event -> {
+            if (event instanceof org.springframework.context.event.ContextRefreshedEvent) {
+                assertEquals("mongodb://localhost:27019", context.getBean(MongoProperties.class).uri());
+                assertEquals("eu-west-1", context.getBean(DynamoProperties.class).region());
+                assertEquals(null, context.getBean(DynamoProperties.class).endpoint());
+            }
+        }));
+        assertEquals(0, BridgeRuntimeApplication.run(application, error, "--plan", plan.toString(), "--config", config.toString()));
+        Files.writeString(config, "bridge:\n  dynamodb:\n    region: eu-west-1\n");
+        assertEquals(1, BridgeRuntimeApplication.run(new SpringApplication(PropertiesConfiguration.class), error,
+                "--plan", plan.toString(), "--config", config.toString()));
+        assertTrue(errors.toString(StandardCharsets.UTF_8).contains("bridge.mongodb"));
+    }
+
+    @Test
+    void reportsSpringFailureAndReturnsOne() throws Exception {
+        Path plan = fixture();
+        Path config = directory.resolve("bridge.yml");
+        Files.writeString(config, "bridge: {}\n");
+        var application = mock(SpringApplication.class);
+        when(application.run("--bridge.execution.plan=" + plan,
+                "--spring.config.location=optional:classpath:/application.yaml," + config.toUri()))
+                .thenThrow(new IllegalStateException("Invalid infrastructure configuration"));
+        assertEquals(1, BridgeRuntimeApplication.run(application, error, "--plan", plan.toString(), "--config", config.toString()));
+        assertTrue(errors.toString(StandardCharsets.UTF_8).contains("Invalid infrastructure configuration"));
+    }
+
+    @Test
     void acceptsPlanPathWithSpacesAndExecutesUsingRealRunner() throws Exception {
         Path plan = fixture();
         RecordCursor cursor = mock(RecordCursor.class);
@@ -78,13 +158,13 @@ class BridgeRuntimeApplicationTest {
     }
 
     @Test
-    void rejectsMissingFileBeforeOpeningConnectors() {
+    void rejectsMissingFileBeforeOpeningConnectors() throws Exception {
         Path plan = directory.resolve("missing.json");
 
         assertEquals(1, runPlan(plan));
 
         assertTrue(errors.toString(StandardCharsets.UTF_8).contains(plan.toString()));
-        assertTrue(errors.toString(StandardCharsets.UTF_8).contains("Plan file does not exist."));
+        assertTrue(errors.toString(StandardCharsets.UTF_8).contains("Plan file does not exist"));
         verifyNoInteractions(source, target);
     }
 
@@ -118,7 +198,9 @@ class BridgeRuntimeApplicationTest {
         return plan;
     }
 
-    private int runPlan(Path plan) {
+    private int runPlan(Path plan) throws Exception {
+        Path config = directory.resolve("bridge config.yml");
+        Files.writeString(config, "bridge: {}\n");
         SpringApplication application = new SpringApplication(ExecutionConfiguration.class);
         application.addInitializers(context -> {
             context.getBeanFactory().registerSingleton("sourceFactory", new SourceConnectorFactory() {
@@ -132,7 +214,7 @@ class BridgeRuntimeApplicationTest {
         });
         application.setBannerMode(Banner.Mode.OFF);
         application.setLogStartupInfo(false);
-        return BridgeRuntimeApplication.run(application, error, "--plan", plan.toString());
+        return BridgeRuntimeApplication.run(application, error, "--config", config.toString(), "--plan", plan.toString());
     }
 
 }

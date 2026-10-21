@@ -52,6 +52,7 @@ class ExecutionConfigurationTest {
     private final MongoClient mongoClient = mock(MongoClient.class);
     private final DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
+            .withPropertyValues("bridge.mongodb.uri=mongodb://localhost:27017", "bridge.dynamodb.region=us-east-1")
             .withBean(MongoClient.class, () -> mongoClient)
             .withBean(DynamoDbClient.class, () -> dynamoDbClient)
             .withUserConfiguration(ExecutionConfiguration.class,
