@@ -1,5 +1,5 @@
 {
-    "name": "bridge-cli",
+    "name": "nosql-bridge-cli",
     "description": "CLI and DSL compiler for NoSQL Bridge MDE",
     "version": "1.0.0",
     "type": "module",
@@ -12,7 +12,7 @@
         "THIRD_PARTY_NOTICES.txt"
     ],
     "bin": {
-        "brg": "./bin/cli.js"
+        "brg": "bin/cli.js"
     },
     "scripts": {
         "clean": "shx rm -fr *.tsbuildinfo out dist",
