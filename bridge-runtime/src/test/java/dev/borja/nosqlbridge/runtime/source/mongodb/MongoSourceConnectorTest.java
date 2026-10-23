@@ -1,15 +1,10 @@
-package dev.borja.nosqlbridge.runtime.connector.mongodb;
+package dev.borja.nosqlbridge.runtime.source.mongodb;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
-
-import org.bson.Document;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.mongodb.MongoException;
 import com.mongodb.client.FindIterable;
@@ -17,12 +12,20 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
+import org.bson.Document;
+import org.bson.types.ObjectId;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-import dev.borja.nosqlbridge.runtime.connector.RecordCursor;
-import dev.borja.nosqlbridge.runtime.connector.SourceConnector;
 import dev.borja.nosqlbridge.runtime.model.LogicalRecord;
 import dev.borja.nosqlbridge.runtime.model.LogicalValue;
 import dev.borja.nosqlbridge.runtime.plan.ConnectorPlan;
+import dev.borja.nosqlbridge.runtime.source.connector.RecordCursor;
+import dev.borja.nosqlbridge.runtime.source.connector.SourceConnector;
+import dev.borja.nosqlbridge.runtime.work.SourcePartition;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -76,19 +79,79 @@ class MongoSourceConnectorTest {
     }
 
     @Test
-    void readsAndConvertsOneDocument() {
+    void opensFirstPartitionWithInclusiveUpperBound() {
+        String upper = "000000000000000000000001";
+        Document filter = new Document("_id", new Document("$lte", new ObjectId(upper)));
+        when(mongoClient.getDatabase("shop")).thenReturn(database);
+        when(database.getCollection("products")).thenReturn(collection);
+        when(collection.find(filter)).thenReturn(documents);
+        when(documents.hintString("_id_")).thenReturn(documents);
+        when(documents.iterator()).thenReturn(mongoCursor);
+        when(mongoCursor.next()).thenReturn(new Document("_id", new ObjectId(upper)).append("name", "Product"));
+
+        try (RecordCursor cursor = connector.open(new MongoIdRange(null, upper).toSourcePartition())) {
+            assertEquals(new LogicalRecord(Map.of(
+                    "_id", new LogicalValue.StringValue(upper),
+                    "name", new LogicalValue.StringValue("Product"))), cursor.next());
+        }
+
+        verify(collection).find(filter);
+        verify(collection, never()).find();
+        verify(mongoCursor).close();
+    }
+
+    @Test
+    void reopensBoundedPartitionUsingTheSameLimits() {
+        String lower = "000000000000000000000001";
+        String upper = "000000000000000000000002";
+        SourcePartition partition = new MongoIdRange(lower, upper).toSourcePartition();
+        Document filter = new Document("_id", new Document("$gt", new ObjectId(lower))
+                .append("$lte", new ObjectId(upper)));
+        when(mongoClient.getDatabase("shop")).thenReturn(database);
+        when(database.getCollection("products")).thenReturn(collection);
+        when(collection.find(filter)).thenReturn(documents);
+        when(documents.hintString("_id_")).thenReturn(documents);
+        when(documents.iterator()).thenReturn(mongoCursor);
+        when(mongoCursor.hasNext()).thenReturn(false);
+
+        for (int attempt = 0; attempt < 2; attempt++) {
+            try (RecordCursor cursor = connector.open(partition)) {
+                assertFalse(cursor.hasNext());
+            }
+        }
+
+        verify(collection, times(2)).find(filter);
+        verify(documents, times(2)).iterator();
+        verify(mongoCursor, times(2)).close();
+        verify(collection, never()).find();
+    }
+
+    @Test
+    void rejectsInvalidPartitionBeforeAccessingMongo() {
+        assertThrows(IllegalArgumentException.class, () -> connector.open(null));
+        assertThrows(IllegalArgumentException.class,
+                () -> connector.open(new SourcePartition("other-source", Map.of())));
+        assertThrows(IllegalArgumentException.class,
+                () -> connector.open(new SourcePartition(MongoIdRange.TYPE, Map.of())));
+        verifyNoInteractions(mongoClient);
+    }
+
+    @Test
+    void readsAndConvertsOneDocumentUsingForEachRemaining() {
         stubOpen();
         when(mongoCursor.hasNext()).thenReturn(true, false);
         when(mongoCursor.next()).thenReturn(new Document("_id", "P001").append("name", "Product A"));
 
+        List<LogicalRecord> records = new ArrayList<>();
         try (RecordCursor cursor = connector.open()) {
-            assertTrue(cursor.hasNext());
-            assertEquals(new LogicalRecord(Map.of(
+            cursor.forEachRemaining(records::add);
+            assertEquals(List.of(new LogicalRecord(Map.of(
                     "_id", new LogicalValue.StringValue("P001"),
-                    "name", new LogicalValue.StringValue("Product A"))), cursor.next());
+                    "name", new LogicalValue.StringValue("Product A")))), records);
             assertFalse(cursor.hasNext());
         }
         verify(mongoCursor).next();
+        verify(mongoCursor).close();
     }
 
     @Test

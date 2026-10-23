@@ -1,14 +1,13 @@
-package dev.borja.nosqlbridge.runtime.connector.mongodb;
-
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Lazy;
+package dev.borja.nosqlbridge.runtime.source.mongodb;
 
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(MongoProperties.class)
@@ -27,8 +26,8 @@ public class MongoConnectorConfiguration {
     }
 
     @Bean
-    public MongoSourceConnectorFactory mongoSourceConnectorFactory(ObjectProvider<MongoClient> client,
+    public MongoSourceTechnologyFactory mongoSourceTechnologyFactory(ObjectProvider<MongoClient> client,
             MongoLogicalValueConverter converter) {
-        return new MongoSourceConnectorFactory(client, converter);
+        return new MongoSourceTechnologyFactory(client, converter);
     }
 }

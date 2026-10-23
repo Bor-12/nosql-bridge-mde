@@ -1,18 +1,18 @@
-package dev.borja.nosqlbridge.runtime.connector.mongodb;
+package dev.borja.nosqlbridge.runtime.source.mongodb;
 
 import java.util.Map;
-
-import org.bson.Document;
 
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
+import org.bson.Document;
 
-import dev.borja.nosqlbridge.runtime.connector.RecordCursor;
-import dev.borja.nosqlbridge.runtime.connector.SourceConnector;
 import dev.borja.nosqlbridge.runtime.model.LogicalRecord;
 import dev.borja.nosqlbridge.runtime.plan.ConnectorPlan;
+import dev.borja.nosqlbridge.runtime.source.connector.RecordCursor;
+import dev.borja.nosqlbridge.runtime.source.connector.SourceConnector;
+import dev.borja.nosqlbridge.runtime.work.SourcePartition;
 
 public class MongoSourceConnector implements SourceConnector {
 
@@ -47,6 +47,13 @@ public class MongoSourceConnector implements SourceConnector {
         MongoCollection<Document> collection = database.getCollection(collectionName);
         MongoCursor<Document> cursor = collection.find().iterator();
         return new MongoRecordCursor(cursor);
+    }
+
+    @Override
+    public RecordCursor open(SourcePartition partition) {
+        MongoIdRange range = MongoIdRange.fromSourcePartition(partition);
+        MongoCollection<Document> collection = mongoClient.getDatabase(databaseName).getCollection(collectionName);
+        return new MongoRecordCursor(collection.find(range.toFilter()).hintString("_id_").iterator());
     }
 
     private String requiredConfig(Map<String, String> config, String name) {

@@ -1,4 +1,4 @@
-package dev.borja.nosqlbridge.runtime.connector.mongodb;
+package dev.borja.nosqlbridge.runtime.source.mongodb;
 
 import java.math.BigDecimal;
 import java.time.Instant;

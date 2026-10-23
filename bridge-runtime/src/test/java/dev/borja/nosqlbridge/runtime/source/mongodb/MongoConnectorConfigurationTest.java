@@ -1,13 +1,12 @@
-package dev.borja.nosqlbridge.runtime.connector.mongodb;
+package dev.borja.nosqlbridge.runtime.source.mongodb;
 
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
-import com.mongodb.client.MongoClient;
-import com.mongodb.client.MongoClients;
-
-import dev.borja.nosqlbridge.runtime.connector.SourceConnectorFactory;
+import dev.borja.nosqlbridge.runtime.source.SourceTechnologyFactory;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -39,9 +38,9 @@ class MongoConnectorConfigurationTest {
             contextRunner.withPropertyValues("bridge.mongodb.uri=" + uri).run(context -> {
                 assertNull(context.getStartupFailure());
                 assertEquals(1, context.getBeansOfType(MongoLogicalValueConverter.class).size());
-                assertEquals(1, context.getBeansOfType(MongoSourceConnectorFactory.class).size());
-                assertSame(context.getBean(MongoSourceConnectorFactory.class),
-                        context.getBean(SourceConnectorFactory.class));
+                assertEquals(1, context.getBeansOfType(MongoSourceTechnologyFactory.class).size());
+                assertSame(context.getBean(MongoSourceTechnologyFactory.class),
+                        context.getBean(SourceTechnologyFactory.class));
                 clients.verifyNoInteractions();
 
                 assertEquals(1, context.getBeansOfType(MongoClient.class).size());
@@ -67,7 +66,7 @@ class MongoConnectorConfigurationTest {
                         assertNull(context.getStartupFailure());
                         assertEquals(1, context.getBeansOfType(MongoClient.class).size());
                         assertEquals(1, context.getBeansOfType(MongoLogicalValueConverter.class).size());
-                        assertEquals(1, context.getBeansOfType(MongoSourceConnectorFactory.class).size());
+                        assertEquals(1, context.getBeansOfType(MongoSourceTechnologyFactory.class).size());
                         assertSame(client, context.getBean(MongoClient.class));
                         assertSame(converter, context.getBean(MongoLogicalValueConverter.class));
                         verifyNoInteractions(client);

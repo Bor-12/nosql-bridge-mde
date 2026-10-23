@@ -1,4 +1,4 @@
-package dev.borja.nosqlbridge.runtime.connector.mongodb;
+package dev.borja.nosqlbridge.runtime.source.mongodb;
 
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.boot.context.properties.ConfigurationProperties;
