@@ -1,11 +1,11 @@
-package dev.borja.nosqlbridge.runtime.connector.dynamodb;
+package dev.borja.nosqlbridge.runtime.target.dynamodb;
 
 import org.springframework.beans.factory.ObjectProvider;
-
-import dev.borja.nosqlbridge.runtime.connector.TargetConnector;
-import dev.borja.nosqlbridge.runtime.connector.TargetConnectorFactory;
-import dev.borja.nosqlbridge.runtime.plan.ConnectorPlan;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
+
+import dev.borja.nosqlbridge.runtime.plan.ConnectorPlan;
+import dev.borja.nosqlbridge.runtime.target.TargetConnector;
+import dev.borja.nosqlbridge.runtime.target.TargetConnectorFactory;
 
 public class DynamoTargetConnectorFactory implements TargetConnectorFactory {
     private final ObjectProvider<DynamoDbClient> client;

@@ -1,13 +1,14 @@
-package dev.borja.nosqlbridge.runtime.connector.dynamodb;
+package dev.borja.nosqlbridge.runtime.target.dynamodb;
 
 import java.util.Map;
 
-import dev.borja.nosqlbridge.runtime.connector.TargetConnector;
-import dev.borja.nosqlbridge.runtime.model.LogicalRecord;
-import dev.borja.nosqlbridge.runtime.plan.ConnectorPlan;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
+
+import dev.borja.nosqlbridge.runtime.model.LogicalRecord;
+import dev.borja.nosqlbridge.runtime.plan.ConnectorPlan;
+import dev.borja.nosqlbridge.runtime.target.TargetConnector;
 
 public class DynamoTargetConnector implements TargetConnector {
 

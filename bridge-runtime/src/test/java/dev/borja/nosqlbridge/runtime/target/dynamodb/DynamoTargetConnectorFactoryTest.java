@@ -1,13 +1,13 @@
-package dev.borja.nosqlbridge.runtime.connector.dynamodb;
+package dev.borja.nosqlbridge.runtime.target.dynamodb;
 
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
+import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 
 import dev.borja.nosqlbridge.runtime.plan.ConnectorPlan;
-import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;

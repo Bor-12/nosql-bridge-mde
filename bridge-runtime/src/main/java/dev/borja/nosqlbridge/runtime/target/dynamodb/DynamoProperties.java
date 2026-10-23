@@ -1,6 +1,7 @@
-package dev.borja.nosqlbridge.runtime.connector.dynamodb;
+package dev.borja.nosqlbridge.runtime.target.dynamodb;
 
 import java.net.URI;
+
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.boot.context.properties.ConfigurationProperties;

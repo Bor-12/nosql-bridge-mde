@@ -1,4 +1,4 @@
-package dev.borja.nosqlbridge.runtime.connector;
+package dev.borja.nosqlbridge.runtime.target;
 
 import dev.borja.nosqlbridge.runtime.model.LogicalRecord;
 
