@@ -7,18 +7,18 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import tools.jackson.databind.ObjectMapper;
 
-import dev.borja.nosqlbridge.runtime.connector.ConnectorRegistry;
-import dev.borja.nosqlbridge.runtime.connector.SourceConnectorFactory;
-import dev.borja.nosqlbridge.runtime.connector.TargetConnectorFactory;
 import dev.borja.nosqlbridge.runtime.mapping.DefaultValueConverter;
 import dev.borja.nosqlbridge.runtime.mapping.MappingEngine;
 import dev.borja.nosqlbridge.runtime.model.LogicalPathResolver;
 import dev.borja.nosqlbridge.runtime.plan.PlanLoader;
 import dev.borja.nosqlbridge.runtime.plan.PlanValidator;
+import dev.borja.nosqlbridge.runtime.registry.TechnologyRegistry;
 import dev.borja.nosqlbridge.runtime.runner.PlanRunner;
+import dev.borja.nosqlbridge.runtime.source.SourceTechnologyFactory;
+import dev.borja.nosqlbridge.runtime.target.TargetConnectorFactory;
 import dev.borja.nosqlbridge.runtime.transformation.TransformationEngine;
-import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "bridge.execution.plan")
@@ -35,9 +35,9 @@ public class ExecutionConfiguration {
     }
 
     @Bean
-    public ConnectorRegistry connectorRegistry(List<SourceConnectorFactory> sources,
+    public TechnologyRegistry connectorRegistry(List<SourceTechnologyFactory> sources,
             List<TargetConnectorFactory> targets) {
-        return new ConnectorRegistry(sources, targets);
+        return new TechnologyRegistry(sources, targets);
     }
 
     @Bean
@@ -48,7 +48,7 @@ public class ExecutionConfiguration {
     @Bean
     public PlanRunner planRunner(@Value("${bridge.execution.plan}") String planPath,
             PlanLoader planLoader, PlanValidator planValidator,
-            ConnectorRegistry connectorRegistry,
+            TechnologyRegistry connectorRegistry,
             MappingEngine mappingEngine) {
         if (planPath.isBlank()) {
             throw new IllegalArgumentException("bridge.execution.plan must not be blank.");

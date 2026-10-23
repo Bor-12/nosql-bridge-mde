@@ -11,18 +11,18 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import dev.borja.nosqlbridge.runtime.config.ExecutionConfiguration;
-import dev.borja.nosqlbridge.runtime.connector.RecordCursor;
-import dev.borja.nosqlbridge.runtime.connector.SourceConnector;
-import dev.borja.nosqlbridge.runtime.connector.SourceConnectorFactory;
-import dev.borja.nosqlbridge.runtime.connector.TargetConnector;
-import dev.borja.nosqlbridge.runtime.connector.TargetConnectorFactory;
 import dev.borja.nosqlbridge.runtime.model.LogicalRecord;
 import dev.borja.nosqlbridge.runtime.model.LogicalValue.StringValue;
 import dev.borja.nosqlbridge.runtime.plan.ConnectorPlan;
+import dev.borja.nosqlbridge.runtime.source.SourceTechnologyFactory;
+import dev.borja.nosqlbridge.runtime.source.connector.RecordCursor;
+import dev.borja.nosqlbridge.runtime.source.connector.SourceConnector;
+import dev.borja.nosqlbridge.runtime.target.TargetConnector;
+import dev.borja.nosqlbridge.runtime.target.TargetConnectorFactory;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -77,9 +77,9 @@ class PlanRunnerTest {
         }
         return new ApplicationContextRunner().withUserConfiguration(ExecutionConfiguration.class)
                 .withPropertyValues("bridge.execution.plan=" + plan)
-                .withBean(SourceConnectorFactory.class, () -> new SourceConnectorFactory() {
+                .withBean(SourceTechnologyFactory.class, () -> new SourceTechnologyFactory() {
                     public String technology() { return "custom-source"; }
-                    public SourceConnector create(ConnectorPlan config) {
+                    public SourceConnector createConnector(ConnectorPlan config) {
                         assertEquals("custom-source", config.technology());
                         if (targetTechnology.equals("unknown")) {
                             throw new AssertionError("Resolve target support before creating source.");

@@ -1,11 +1,11 @@
 package dev.borja.nosqlbridge.runtime.orchestration;
 
-import dev.borja.nosqlbridge.runtime.connector.RecordCursor;
-import dev.borja.nosqlbridge.runtime.connector.SourceConnector;
-import dev.borja.nosqlbridge.runtime.connector.TargetConnector;
 import dev.borja.nosqlbridge.runtime.mapping.MappingEngine;
 import dev.borja.nosqlbridge.runtime.model.LogicalRecord;
 import dev.borja.nosqlbridge.runtime.plan.BridgeExecutionPlan;
+import dev.borja.nosqlbridge.runtime.source.connector.RecordCursor;
+import dev.borja.nosqlbridge.runtime.source.connector.SourceConnector;
+import dev.borja.nosqlbridge.runtime.target.TargetConnector;
 
 public class BridgeOrchestrator {
 

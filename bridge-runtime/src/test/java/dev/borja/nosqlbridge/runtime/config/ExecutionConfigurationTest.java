@@ -4,6 +4,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
+import com.mongodb.client.FindIterable;
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
+import com.mongodb.client.MongoDatabase;
 import org.bson.Document;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,32 +16,26 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.NestedExceptionUtils;
-
-import com.mongodb.client.FindIterable;
-import com.mongodb.client.MongoClient;
-import com.mongodb.client.MongoCollection;
-import com.mongodb.client.MongoCursor;
-import com.mongodb.client.MongoDatabase;
-
-import dev.borja.nosqlbridge.runtime.plan.UnsupportedPlanVersionException;
-import dev.borja.nosqlbridge.runtime.runner.PlanRunner;
-import dev.borja.nosqlbridge.runtime.connector.mongodb.MongoConnectorConfiguration;
-import dev.borja.nosqlbridge.runtime.connector.dynamodb.DynamoConnectorConfiguration;
-import dev.borja.nosqlbridge.runtime.connector.mongodb.MongoLogicalValueConverter;
-import dev.borja.nosqlbridge.runtime.connector.dynamodb.DynamoLogicalValueConverter;
-import dev.borja.nosqlbridge.runtime.model.LogicalRecord;
-import dev.borja.nosqlbridge.runtime.connector.ConnectorRegistry;
-import dev.borja.nosqlbridge.runtime.connector.SourceConnectorFactory;
-import dev.borja.nosqlbridge.runtime.connector.TargetConnectorFactory;
-import dev.borja.nosqlbridge.runtime.connector.mongodb.MongoSourceConnectorFactory;
-import dev.borja.nosqlbridge.runtime.connector.dynamodb.DynamoTargetConnectorFactory;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
 
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import dev.borja.nosqlbridge.runtime.model.LogicalRecord;
+import dev.borja.nosqlbridge.runtime.plan.UnsupportedPlanVersionException;
+import dev.borja.nosqlbridge.runtime.registry.TechnologyRegistry;
+import dev.borja.nosqlbridge.runtime.runner.PlanRunner;
+import dev.borja.nosqlbridge.runtime.source.SourceTechnologyFactory;
+import dev.borja.nosqlbridge.runtime.source.mongodb.MongoConnectorConfiguration;
+import dev.borja.nosqlbridge.runtime.source.mongodb.MongoLogicalValueConverter;
+import dev.borja.nosqlbridge.runtime.source.mongodb.MongoSourceTechnologyFactory;
+import dev.borja.nosqlbridge.runtime.target.TargetConnectorFactory;
+import dev.borja.nosqlbridge.runtime.target.dynamodb.DynamoConnectorConfiguration;
+import dev.borja.nosqlbridge.runtime.target.dynamodb.DynamoLogicalValueConverter;
+import dev.borja.nosqlbridge.runtime.target.dynamodb.DynamoTargetConnectorFactory;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -136,10 +135,10 @@ class ExecutionConfigurationTest {
 
         runner.withPropertyValues("bridge.execution.plan=" + testPlan).run(context -> {
             assertNull(context.getStartupFailure());
-            assertEquals(1, context.getBeansOfType(SourceConnectorFactory.class).size());
+            assertEquals(1, context.getBeansOfType(SourceTechnologyFactory.class).size());
             assertEquals(1, context.getBeansOfType(TargetConnectorFactory.class).size());
-            ConnectorRegistry registry = context.getBean(ConnectorRegistry.class);
-            assertSame(context.getBean(MongoSourceConnectorFactory.class), registry.sourceFactory("mongodb"));
+            TechnologyRegistry registry = context.getBean(TechnologyRegistry.class);
+            assertSame(context.getBean(MongoSourceTechnologyFactory.class), registry.sourceFactory("mongodb"));
             assertSame(context.getBean(DynamoTargetConnectorFactory.class), registry.targetFactory("dynamodb"));
             assertEquals(1, context.getBeansOfType(MongoLogicalValueConverter.class).size());
             assertEquals(1, context.getBeansOfType(DynamoLogicalValueConverter.class).size());

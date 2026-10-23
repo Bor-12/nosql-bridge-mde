@@ -15,14 +15,19 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.boot.Banner;
 import org.springframework.boot.SpringApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.Configuration;
 
 import dev.borja.nosqlbridge.runtime.config.ExecutionConfiguration;
-import dev.borja.nosqlbridge.runtime.connector.RecordCursor;
-import dev.borja.nosqlbridge.runtime.connector.SourceConnector;
-import dev.borja.nosqlbridge.runtime.connector.SourceConnectorFactory;
-import dev.borja.nosqlbridge.runtime.connector.TargetConnector;
-import dev.borja.nosqlbridge.runtime.connector.TargetConnectorFactory;
 import dev.borja.nosqlbridge.runtime.plan.ConnectorPlan;
+import dev.borja.nosqlbridge.runtime.source.SourceTechnologyFactory;
+import dev.borja.nosqlbridge.runtime.source.connector.RecordCursor;
+import dev.borja.nosqlbridge.runtime.source.connector.SourceConnector;
+import dev.borja.nosqlbridge.runtime.source.mongodb.MongoProperties;
+import dev.borja.nosqlbridge.runtime.target.TargetConnector;
+import dev.borja.nosqlbridge.runtime.target.TargetConnectorFactory;
+import dev.borja.nosqlbridge.runtime.target.dynamodb.DynamoProperties;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -30,11 +35,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
-import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.annotation.Configuration;
-import dev.borja.nosqlbridge.runtime.connector.mongodb.MongoProperties;
-import dev.borja.nosqlbridge.runtime.connector.dynamodb.DynamoProperties;
 
 class BridgeRuntimeApplicationTest {
 
@@ -203,9 +203,9 @@ class BridgeRuntimeApplicationTest {
         Files.writeString(config, "bridge: {}\n");
         SpringApplication application = new SpringApplication(ExecutionConfiguration.class);
         application.addInitializers(context -> {
-            context.getBeanFactory().registerSingleton("sourceFactory", new SourceConnectorFactory() {
+            context.getBeanFactory().registerSingleton("sourceFactory", new SourceTechnologyFactory() {
                 public String technology() { return "custom-source"; }
-                public SourceConnector create(ConnectorPlan plan) { return source; }
+                public SourceConnector createConnector(ConnectorPlan plan) { return source; }
             });
             context.getBeanFactory().registerSingleton("targetFactory", new TargetConnectorFactory() {
                 public String technology() { return "custom-target"; }

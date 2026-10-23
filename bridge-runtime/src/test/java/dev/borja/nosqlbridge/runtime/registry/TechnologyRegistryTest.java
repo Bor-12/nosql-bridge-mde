@@ -1,20 +1,24 @@
-package dev.borja.nosqlbridge.runtime.connector;
+package dev.borja.nosqlbridge.runtime.registry;
 
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
 import dev.borja.nosqlbridge.runtime.plan.ConnectorPlan;
+import dev.borja.nosqlbridge.runtime.source.SourceTechnologyFactory;
+import dev.borja.nosqlbridge.runtime.source.connector.SourceConnector;
+import dev.borja.nosqlbridge.runtime.target.TargetConnector;
+import dev.borja.nosqlbridge.runtime.target.TargetConnectorFactory;
 
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class ConnectorRegistryTest {
+class TechnologyRegistryTest {
     @Test
     void resolvesNewTechnologyIndependentlyForEachRole() {
-        SourceConnectorFactory source = new SourceFactory("custom");
+        SourceTechnologyFactory source = new SourceFactory("custom");
         TargetConnectorFactory target = new TargetFactory("custom");
-        ConnectorRegistry registry = new ConnectorRegistry(List.of(source), List.of(target));
+        TechnologyRegistry registry = new TechnologyRegistry(List.of(source), List.of(target));
 
         assertSame(source, registry.sourceFactory("custom"));
         assertSame(target, registry.targetFactory("custom"));
@@ -22,7 +26,7 @@ class ConnectorRegistryTest {
 
     @Test
     void sourceSupportDoesNotImplyTargetSupport() {
-        ConnectorRegistry registry = new ConnectorRegistry(List.of(new SourceFactory("custom")), List.of());
+        TechnologyRegistry registry = new TechnologyRegistry(List.of(new SourceFactory("custom")), List.of());
 
         assertThrows(IllegalArgumentException.class, () -> registry.targetFactory("custom"));
         assertThrows(IllegalArgumentException.class, () -> registry.sourceFactory("unknown"));
@@ -30,7 +34,7 @@ class ConnectorRegistryTest {
 
     @Test
     void targetSupportDoesNotImplySourceSupport() {
-        ConnectorRegistry registry = new ConnectorRegistry(List.of(), List.of(new TargetFactory("custom")));
+        TechnologyRegistry registry = new TechnologyRegistry(List.of(), List.of(new TargetFactory("custom")));
 
         assertThrows(IllegalArgumentException.class, () -> registry.sourceFactory("custom"));
         assertThrows(IllegalArgumentException.class, () -> registry.targetFactory("unknown"));
@@ -38,19 +42,19 @@ class ConnectorRegistryTest {
 
     @Test
     void rejectsAmbiguousSourceRegistration() {
-        assertThrows(IllegalArgumentException.class, () -> new ConnectorRegistry(
+        assertThrows(IllegalArgumentException.class, () -> new TechnologyRegistry(
                 List.of(new SourceFactory("custom"), new SourceFactory("custom")), List.of()));
     }
 
     @Test
     void rejectsAmbiguousTargetRegistration() {
-        assertThrows(IllegalArgumentException.class, () -> new ConnectorRegistry(List.of(),
+        assertThrows(IllegalArgumentException.class, () -> new TechnologyRegistry(List.of(),
                 List.of(new TargetFactory("custom"), new TargetFactory("custom"))));
     }
 
-    private record SourceFactory(String technology) implements SourceConnectorFactory {
+    private record SourceFactory(String technology) implements SourceTechnologyFactory {
         @Override
-        public SourceConnector create(ConnectorPlan plan) {
+        public SourceConnector createConnector(ConnectorPlan plan) {
             throw new AssertionError("Registry lookup must not create a connector.");
         }
     }

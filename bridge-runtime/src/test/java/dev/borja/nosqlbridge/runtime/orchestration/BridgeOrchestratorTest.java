@@ -10,15 +10,15 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import dev.borja.nosqlbridge.runtime.connector.RecordCursor;
-import dev.borja.nosqlbridge.runtime.connector.SourceConnector;
-import dev.borja.nosqlbridge.runtime.connector.TargetConnector;
 import dev.borja.nosqlbridge.runtime.mapping.MappingEngine;
 import dev.borja.nosqlbridge.runtime.model.LogicalRecord;
 import dev.borja.nosqlbridge.runtime.model.LogicalValue;
 import dev.borja.nosqlbridge.runtime.plan.BridgeExecutionPlan;
 import dev.borja.nosqlbridge.runtime.plan.ConnectorPlan;
 import dev.borja.nosqlbridge.runtime.plan.MappingPlan;
+import dev.borja.nosqlbridge.runtime.source.connector.RecordCursor;
+import dev.borja.nosqlbridge.runtime.source.connector.SourceConnector;
+import dev.borja.nosqlbridge.runtime.target.TargetConnector;
 
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
