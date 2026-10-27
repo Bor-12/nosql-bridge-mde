@@ -5,6 +5,7 @@ import java.util.List;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import tools.jackson.databind.ObjectMapper;
@@ -20,14 +21,26 @@ import dev.borja.nosqlbridge.runtime.runner.PlanRunner;
 import dev.borja.nosqlbridge.runtime.source.SourceTechnologyFactory;
 import dev.borja.nosqlbridge.runtime.target.TargetConnectorFactory;
 import dev.borja.nosqlbridge.runtime.transformation.TransformationEngine;
+import dev.borja.nosqlbridge.runtime.work.WorkUnitMessageSerializer;
 
 @Configuration(proxyBeanMethods = false)
 public class ExecutionConfiguration {
 
     @Bean
+    @ConditionalOnMissingBean(ObjectMapper.class)
+    public ObjectMapper objectMapper() {
+        return new ObjectMapper();
+    }
+
+    @Bean
+    public WorkUnitMessageSerializer workUnitMessageSerializer(ObjectMapper objectMapper) {
+        return new WorkUnitMessageSerializer(objectMapper);
+    }
+
+    @Bean
     @ConditionalOnProperty(name = "bridge.execution.plan")
-    public PlanLoader planLoader() {
-        return new PlanLoader(new ObjectMapper());
+    public PlanLoader planLoader(ObjectMapper objectMapper) {
+        return new PlanLoader(objectMapper);
     }
 
     @Bean

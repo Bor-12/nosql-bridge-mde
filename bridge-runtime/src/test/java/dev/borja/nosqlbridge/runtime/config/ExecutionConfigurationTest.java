@@ -4,6 +4,7 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.UUID;
 
 import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoClient;
@@ -17,6 +18,9 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.NestedExceptionUtils;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.SerializationFeature;
+import tools.jackson.databind.json.JsonMapper;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
@@ -26,6 +30,7 @@ import dev.borja.nosqlbridge.runtime.execution.WorkUnitExecutor;
 import dev.borja.nosqlbridge.runtime.mapping.MappingEngine;
 import dev.borja.nosqlbridge.runtime.plan.PlanLoader;
 import dev.borja.nosqlbridge.runtime.plan.PlanValidator;
+import dev.borja.nosqlbridge.runtime.plan.BridgeExecutionPlan;
 import dev.borja.nosqlbridge.runtime.plan.UnsupportedPlanVersionException;
 import dev.borja.nosqlbridge.runtime.registry.TechnologyRegistry;
 import dev.borja.nosqlbridge.runtime.runner.PlanRunner;
@@ -37,6 +42,12 @@ import dev.borja.nosqlbridge.runtime.target.TargetConnectorFactory;
 import dev.borja.nosqlbridge.runtime.target.dynamodb.DynamoConnectorConfiguration;
 import dev.borja.nosqlbridge.runtime.target.dynamodb.DynamoLogicalValueConverter;
 import dev.borja.nosqlbridge.runtime.target.dynamodb.DynamoTargetConnectorFactory;
+import dev.borja.nosqlbridge.runtime.work.MigrationId;
+import dev.borja.nosqlbridge.runtime.work.SourcePartition;
+import dev.borja.nosqlbridge.runtime.work.WorkUnit;
+import dev.borja.nosqlbridge.runtime.work.WorkUnitId;
+import dev.borja.nosqlbridge.runtime.work.WorkUnitMessage;
+import dev.borja.nosqlbridge.runtime.work.WorkUnitMessageSerializer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -80,10 +91,34 @@ class ExecutionConfigurationTest {
             assertEquals(1, context.getBeansOfType(TechnologyRegistry.class).size());
             assertEquals(1, context.getBeansOfType(MappingEngine.class).size());
             assertEquals(1, context.getBeansOfType(WorkUnitExecutor.class).size());
+            assertEquals(1, context.getBeansOfType(ObjectMapper.class).size());
+            assertEquals(1, context.getBeansOfType(WorkUnitMessageSerializer.class).size());
             assertTrue(context.getBeansOfType(PlanLoader.class).isEmpty());
             assertTrue(context.getBeansOfType(PlanValidator.class).isEmpty());
             verifyNoInteractions(mongoClient, dynamoDbClient);
         });
+    }
+
+    @Test
+    void reusesConfiguredMapperForPlanLoadingAndWorkUnitMessages() {
+        ObjectMapper mapper = JsonMapper.builder().enable(SerializationFeature.INDENT_OUTPUT).build();
+        contextRunner.withBean(ObjectMapper.class, () -> mapper)
+                .withPropertyValues("bridge.execution.plan=" + testPlan).run(context -> {
+                    assertNull(context.getStartupFailure());
+                    assertEquals(1, context.getBeansOfType(ObjectMapper.class).size());
+                    assertSame(mapper, context.getBean(ObjectMapper.class));
+                    BridgeExecutionPlan plan = context.getBean(PlanLoader.class).load(testPlan);
+                    WorkUnit unit = new WorkUnit(new MigrationId(UUID.fromString("550e8400-e29b-41d4-a716-446655440000")),
+                            new WorkUnitId(0), new SourcePartition("test", Map.of()));
+                    WorkUnitMessage message = new WorkUnitMessage(unit, plan);
+                    WorkUnitMessageSerializer serializer = context.getBean(WorkUnitMessageSerializer.class);
+                    String json = serializer.serialize(message);
+                    assertEquals(mapper.readTree(json).toString(), json);
+                    assertTrue(mapper.isEnabled(SerializationFeature.INDENT_OUTPUT));
+                    assertTrue(mapper.writeValueAsString(message).contains("\n"));
+                    assertEquals(message, serializer.deserialize(json));
+                    verifyNoInteractions(mongoClient, dynamoDbClient);
+                });
     }
 
     @Test
