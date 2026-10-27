@@ -22,6 +22,10 @@ import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
 
 import dev.borja.nosqlbridge.runtime.model.LogicalRecord;
+import dev.borja.nosqlbridge.runtime.execution.WorkUnitExecutor;
+import dev.borja.nosqlbridge.runtime.mapping.MappingEngine;
+import dev.borja.nosqlbridge.runtime.plan.PlanLoader;
+import dev.borja.nosqlbridge.runtime.plan.PlanValidator;
 import dev.borja.nosqlbridge.runtime.plan.UnsupportedPlanVersionException;
 import dev.borja.nosqlbridge.runtime.registry.TechnologyRegistry;
 import dev.borja.nosqlbridge.runtime.runner.PlanRunner;
@@ -73,6 +77,11 @@ class ExecutionConfigurationTest {
         contextRunner.run(context -> {
             assertNull(context.getStartupFailure());
             assertTrue(context.getBeansOfType(CommandLineRunner.class).isEmpty());
+            assertEquals(1, context.getBeansOfType(TechnologyRegistry.class).size());
+            assertEquals(1, context.getBeansOfType(MappingEngine.class).size());
+            assertEquals(1, context.getBeansOfType(WorkUnitExecutor.class).size());
+            assertTrue(context.getBeansOfType(PlanLoader.class).isEmpty());
+            assertTrue(context.getBeansOfType(PlanValidator.class).isEmpty());
             verifyNoInteractions(mongoClient, dynamoDbClient);
         });
     }
@@ -136,6 +145,12 @@ class ExecutionConfigurationTest {
 
         runner.withPropertyValues("bridge.execution.plan=" + testPlan).run(context -> {
             assertNull(context.getStartupFailure());
+            assertEquals(1, context.getBeansOfType(TechnologyRegistry.class).size());
+            assertEquals(1, context.getBeansOfType(MappingEngine.class).size());
+            assertEquals(1, context.getBeansOfType(WorkUnitExecutor.class).size());
+            assertEquals(1, context.getBeansOfType(PlanLoader.class).size());
+            assertEquals(1, context.getBeansOfType(PlanValidator.class).size());
+            assertEquals(1, context.getBeansOfType(PlanRunner.class).size());
             assertEquals(1, context.getBeansOfType(SourceTechnologyFactory.class).size());
             assertEquals(1, context.getBeansOfType(TargetConnectorFactory.class).size());
             TechnologyRegistry registry = context.getBean(TechnologyRegistry.class);

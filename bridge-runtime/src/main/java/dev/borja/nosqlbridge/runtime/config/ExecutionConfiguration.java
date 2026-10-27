@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Configuration;
 import tools.jackson.databind.ObjectMapper;
 
 import dev.borja.nosqlbridge.runtime.mapping.DefaultValueConverter;
+import dev.borja.nosqlbridge.runtime.execution.WorkUnitExecutor;
 import dev.borja.nosqlbridge.runtime.mapping.MappingEngine;
 import dev.borja.nosqlbridge.runtime.model.LogicalPathResolver;
 import dev.borja.nosqlbridge.runtime.plan.PlanLoader;
@@ -21,15 +22,16 @@ import dev.borja.nosqlbridge.runtime.target.TargetConnectorFactory;
 import dev.borja.nosqlbridge.runtime.transformation.TransformationEngine;
 
 @Configuration(proxyBeanMethods = false)
-@ConditionalOnProperty(name = "bridge.execution.plan")
 public class ExecutionConfiguration {
 
     @Bean
+    @ConditionalOnProperty(name = "bridge.execution.plan")
     public PlanLoader planLoader() {
         return new PlanLoader(new ObjectMapper());
     }
 
     @Bean
+    @ConditionalOnProperty(name = "bridge.execution.plan")
     public PlanValidator planValidator() {
         return new PlanValidator();
     }
@@ -46,6 +48,13 @@ public class ExecutionConfiguration {
     }
 
     @Bean
+    public WorkUnitExecutor workUnitExecutor(TechnologyRegistry technologyRegistry, MappingEngine mappingEngine,
+            @Value("${bridge.execution.batch-size:25}") int batchSize) {
+        return new WorkUnitExecutor(technologyRegistry, mappingEngine, batchSize);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "bridge.execution.plan")
     public PlanRunner planRunner(@Value("${bridge.execution.plan}") String planPath,
             PlanLoader planLoader, PlanValidator planValidator,
             TechnologyRegistry connectorRegistry,
