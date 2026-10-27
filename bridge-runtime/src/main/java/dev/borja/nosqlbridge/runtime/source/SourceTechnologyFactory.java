@@ -8,7 +8,6 @@ public interface SourceTechnologyFactory {
     String technology();
     SourceConnector createConnector(ConnectorPlan plan);
 
-    /** Creates the source's planning component independently of its record reader. */
     default SourcePartitioner createPartitioner(ConnectorPlan plan) {
         throw new UnsupportedOperationException("Source technology does not support partitioning.");
     }

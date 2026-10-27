@@ -8,11 +8,6 @@ public interface TargetConnector {
 
     void write(LogicalRecord record);
 
-    /**
-     * Returns only after every record has been written. This is not atomic:
-     * a failure may leave earlier writes applied. Records retain input order
-     * when writing the same key. Implementations may use native batch operations.
-     */
     default void writeBatch(List<LogicalRecord> records) {
         if (records == null) {
             throw new IllegalArgumentException("Logical records must not be null.");

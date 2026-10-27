@@ -4,7 +4,6 @@ import java.time.Duration;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-/** Retry policy for successful BatchWriteItem responses containing unprocessed items. */
 @ConfigurationProperties("bridge.dynamodb.batch-write")
 public record DynamoBatchWriteProperties(Integer maxRetries, Duration initialBackoff, Duration maxBackoff) {
 

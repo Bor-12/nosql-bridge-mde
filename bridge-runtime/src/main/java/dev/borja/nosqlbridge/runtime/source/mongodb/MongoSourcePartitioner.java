@@ -11,12 +11,6 @@ import dev.borja.nosqlbridge.runtime.source.partitioning.SourcePartitionCursor;
 import dev.borja.nosqlbridge.runtime.source.partitioning.SourcePartitioner;
 import dev.borja.nosqlbridge.runtime.work.SourcePartition;
 
-/**
- * Discovers ObjectId ranges incrementally over the _id_ index, retaining only
- * the current boundary in addition to the driver's cursor buffers.
- * Supports unique ObjectId ids only. The source must remain unchanged for
- * stable planning and replay; these ranges are not a snapshot.
- */
 public class MongoSourcePartitioner implements SourcePartitioner {
 
     private final MongoCollection<Document> collection;

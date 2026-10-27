@@ -10,7 +10,6 @@ import dev.borja.nosqlbridge.runtime.work.MigrationId;
 import dev.borja.nosqlbridge.runtime.work.WorkUnit;
 import dev.borja.nosqlbridge.runtime.work.WorkUnitId;
 
-/** Wraps source-specific discovery, producing one numbered work unit per partition. */
 public class MigrationPartitioner {
 
     private final TechnologyRegistry technologyRegistry;

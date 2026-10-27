@@ -80,7 +80,6 @@ class DynamoConnectorConfigurationTest {
             assertTrue(config.endpointOverride().isEmpty());
             assertEquals(Region.of("eu-west-1"), config.region());
             assertFalse(config.credentialsProvider() instanceof StaticCredentialsProvider);
-            // Do not resolve credentials or send requests: the SDK owns its default chain.
         });
     }
 

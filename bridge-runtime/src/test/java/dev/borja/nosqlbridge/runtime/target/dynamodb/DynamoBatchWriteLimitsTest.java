@@ -135,8 +135,6 @@ class DynamoBatchWriteLimitsTest {
         AttributeValue value = AttributeValue.builder().m(Map.of("a", AttributeValue.builder()
                 .l(AttributeValue.builder().bool(false).build(), AttributeValue.builder().nul(true).build()).build())).build();
 
-        // Root name 1; map overhead 3 + element 1; nested name 1;
-        // list overhead 3; two elements each with overhead 1 and value size 1.
         assertEquals(13, DynamoBatchWriteLimits.itemBytes(Map.of("m", value)));
     }
 

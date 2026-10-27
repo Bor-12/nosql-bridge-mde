@@ -11,13 +11,11 @@ import tools.jackson.core.ObjectWriteContext;
 import tools.jackson.core.json.JsonFactory;
 import tools.jackson.core.json.JsonWriteFeature;
 
-/** Storage estimates and JSON wire sizes for attributes emitted by our converter. */
 final class DynamoBatchWriteLimits {
 
     static final int MAX_OPERATIONS = 25;
     static final long MAX_ITEM_BYTES = 400L * 1024;
     static final long MAX_REQUEST_BYTES = 16L * 1024 * 1024;
-    // Match the SDK's escaped surrogate pairs rather than four-byte UTF-8 code points.
     private static final JsonFactory JSON = JsonFactory.builder()
             .disable(JsonWriteFeature.COMBINE_UNICODE_SURROGATES_IN_UTF8).build();
 
@@ -33,8 +31,6 @@ final class DynamoBatchWriteLimits {
 
     private static long storedValueBytes(AttributeValue value) {
         if (value.s() != null) return utf8Bytes(value.s());
-        // AWS documents approximately one byte per two significant digits + 1.
-        // Reserve an additional byte instead of treating text length as storage.
         if (value.n() != null) {
             int digits = new BigDecimal(value.n()).stripTrailingZeros().precision();
             return (digits + 1L) / 2 + 2;

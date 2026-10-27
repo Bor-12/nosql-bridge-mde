@@ -2,10 +2,6 @@ package dev.borja.nosqlbridge.runtime.work;
 
 import java.util.Map;
 
-/**
- * Transportable source scope. The source connector owns the meaning and
- * validation of the type and parameters; the execution core treats them as opaque.
- */
 public record SourcePartition(String type, Map<String, String> parameters) {
 
     public SourcePartition {

@@ -9,10 +9,6 @@ import org.bson.types.ObjectId;
 
 import dev.borja.nosqlbridge.runtime.work.SourcePartition;
 
-/**
- * ObjectId range (lowerExclusive, upperInclusive]. A null lower bound means
- * the first range. Bounds are canonical hex strings for JSON transport.
- */
 public record MongoIdRange(String lowerExclusive, String upperInclusive) {
 
     public static final String TYPE = "mongodb-object-id-range";

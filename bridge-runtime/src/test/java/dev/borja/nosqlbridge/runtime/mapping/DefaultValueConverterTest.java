@@ -69,7 +69,6 @@ class DefaultValueConverterTest {
                 Arguments.of((short) 256, BigDecimal.valueOf(256)),
                 Arguments.of(65536, BigDecimal.valueOf(65536)),
                 Arguments.of(Long.MAX_VALUE, BigDecimal.valueOf(Long.MAX_VALUE)),
-                // Float is widened to double before BigDecimal.valueOf is called.
                 Arguments.of(0.1f, new BigDecimal("0.10000000149011612")),
                 Arguments.of(12.50, new BigDecimal("12.5")));
     }

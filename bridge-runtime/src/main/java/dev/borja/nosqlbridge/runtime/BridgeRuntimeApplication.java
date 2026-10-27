@@ -46,8 +46,6 @@ public class BridgeRuntimeApplication {
 			return 1;
 		}
 
-		// Replace implicit working-directory locations with the generic classpath
-		// config and the explicitly selected file. URI conversion handles Windows/spaces.
 		try (ConfigurableApplicationContext context = application.run("--bridge.execution.plan=" + planPath,
 				"--spring.config.location=optional:classpath:/application.yaml," + configPath.toUri())) {
 			return 0;
