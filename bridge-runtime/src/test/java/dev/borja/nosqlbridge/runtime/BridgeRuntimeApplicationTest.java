@@ -1,6 +1,7 @@
 package dev.borja.nosqlbridge.runtime;
 
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -98,8 +99,8 @@ class BridgeRuntimeApplicationTest {
         for (String[] args : List.of(
                 new String[] {"--plan", plan.toString(), "--config", config.toString()},
                 new String[] {"--config", config.toString(), "--plan", plan.toString()})) {
-            var application = mock(SpringApplication.class);
-            var context = mock(ConfigurableApplicationContext.class);
+            SpringApplication application = mock(SpringApplication.class);
+            ConfigurableApplicationContext context = mock(ConfigurableApplicationContext.class);
             when(application.run("--bridge.execution.plan=" + plan,
                     "--spring.config.location=optional:classpath:/application.yaml," + config.toUri())).thenReturn(context);
             assertEquals(0, BridgeRuntimeApplication.run(application, error, args));
@@ -116,7 +117,7 @@ class BridgeRuntimeApplicationTest {
         Path plan = fixture();
         Path config = directory.resolve("external config.yml");
         Files.writeString(config, "bridge:\n  mongodb:\n    uri: mongodb://localhost:27019\n  dynamodb:\n    region: eu-west-1\n");
-        var application = new SpringApplication(PropertiesConfiguration.class);
+        SpringApplication application = new SpringApplication(PropertiesConfiguration.class);
         application.addInitializers(context -> context.addApplicationListener(event -> {
             if (event instanceof org.springframework.context.event.ContextRefreshedEvent) {
                 assertEquals("mongodb://localhost:27019", context.getBean(MongoProperties.class).uri());
@@ -136,7 +137,7 @@ class BridgeRuntimeApplicationTest {
         Path plan = fixture();
         Path config = directory.resolve("bridge.yml");
         Files.writeString(config, "bridge: {}\n");
-        var application = mock(SpringApplication.class);
+        SpringApplication application = mock(SpringApplication.class);
         when(application.run("--bridge.execution.plan=" + plan,
                 "--spring.config.location=optional:classpath:/application.yaml," + config.toUri()))
                 .thenThrow(new IllegalStateException("Invalid infrastructure configuration"));
@@ -192,7 +193,7 @@ class BridgeRuntimeApplicationTest {
 
     private Path fixture() throws Exception {
         Path plan = directory.resolve("valid plan.json");
-        try (var input = getClass().getResourceAsStream("/plans/custom-connectors-test.json")) {
+        try (InputStream input = getClass().getResourceAsStream("/plans/custom-connectors-test.json")) {
             Files.copy(input, plan);
         }
         return plan;

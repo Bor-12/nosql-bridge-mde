@@ -1,5 +1,6 @@
 package dev.borja.nosqlbridge.runtime.config;
 
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -62,7 +63,7 @@ class ExecutionConfigurationTest {
 
     @BeforeEach
     void resolveTestPlanFromClasspath() throws Exception {
-        var resource = getClass().getResource("/plans/mongodb-to-dynamodb-test.json");
+        URL resource = getClass().getResource("/plans/mongodb-to-dynamodb-test.json");
         assertNotNull(resource, "Execution plan fixture must be available on the test classpath.");
         testPlan = Path.of(resource.toURI());
     }

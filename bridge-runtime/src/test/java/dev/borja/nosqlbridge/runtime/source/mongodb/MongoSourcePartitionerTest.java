@@ -2,6 +2,7 @@ package dev.borja.nosqlbridge.runtime.source.mongodb;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 
@@ -277,7 +278,7 @@ class MongoSourcePartitionerTest {
 
     private void stubIds(ObjectId... ids) {
         stubQuery();
-        var iterator = Arrays.asList(ids).iterator();
+        Iterator<ObjectId> iterator = Arrays.asList(ids).iterator();
         when(cursor.hasNext()).thenAnswer(invocation -> iterator.hasNext());
         if (ids.length > 0) {
             when(cursor.next()).thenAnswer(invocation -> new Document("_id", iterator.next()));

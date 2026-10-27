@@ -1,5 +1,6 @@
 package dev.borja.nosqlbridge.runtime.runner;
 
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -66,7 +67,7 @@ class PlanRunnerTest {
 
     private ApplicationContextRunner context(String targetTechnology, SourceConnector source,
             TargetConnector target) throws Exception {
-        var resource = getClass().getResource("/plans/custom-connectors-test.json");
+        URL resource = getClass().getResource("/plans/custom-connectors-test.json");
         assertNotNull(resource, "Runner plan fixture must be available on the test classpath.");
         Path plan = Path.of(resource.toURI());
         if (!"custom-target".equals(targetTechnology)) {

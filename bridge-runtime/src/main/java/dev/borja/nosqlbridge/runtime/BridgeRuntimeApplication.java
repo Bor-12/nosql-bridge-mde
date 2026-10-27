@@ -5,12 +5,15 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Files;
 import java.util.HashMap;
+import java.util.Map;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.core.NestedExceptionUtils;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.boot.context.properties.bind.validation.BindValidationException;
 import org.springframework.validation.FieldError;
+import org.springframework.validation.ObjectError;
 
 @SpringBootApplication
 public class BridgeRuntimeApplication {
@@ -26,7 +29,7 @@ public class BridgeRuntimeApplication {
 		Path planPath;
 		Path configPath;
 		try {
-			var options = new HashMap<String, String>();
+			Map<String, String> options = new HashMap<>();
 			for (int i = 0; i < args.length; i += 2) {
 				String option = args[i];
 				if ((!option.equals("--plan") && !option.equals("--config")) || i + 1 >= args.length
@@ -45,14 +48,14 @@ public class BridgeRuntimeApplication {
 
 		// Replace implicit working-directory locations with the generic classpath
 		// config and the explicitly selected file. URI conversion handles Windows/spaces.
-		try (var context = application.run("--bridge.execution.plan=" + planPath,
+		try (ConfigurableApplicationContext context = application.run("--bridge.execution.plan=" + planPath,
 				"--spring.config.location=optional:classpath:/application.yaml," + configPath.toUri())) {
 			return 0;
 		} catch (Exception exception) {
 			Throwable cause = NestedExceptionUtils.getMostSpecificCause(exception);
 			for (Throwable failure = exception; failure != null; failure = failure.getCause()) {
 				if (failure instanceof BindValidationException validation) {
-					for (var issue : validation.getValidationErrors().getAllErrors()) {
+					for (ObjectError issue : validation.getValidationErrors().getAllErrors()) {
 						error.println("Invalid configuration: " + validation.getValidationErrors().getName()
 							+ (issue instanceof FieldError field ? "." + field.getField() : "")
 							+ " " + issue.getDefaultMessage());

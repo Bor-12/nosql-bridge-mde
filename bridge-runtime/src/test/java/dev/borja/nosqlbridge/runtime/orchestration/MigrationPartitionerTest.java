@@ -1,6 +1,7 @@
 package dev.borja.nosqlbridge.runtime.orchestration;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -67,7 +68,7 @@ class MigrationPartitionerTest {
         SourcePartition second = new SourcePartition("test-range", Map.of("lower", "10", "upper", "20"));
         SourcePartition third = new SourcePartition("test-range", Map.of("lower", "20", "upper", "30"));
         stubOpen();
-        var remaining = List.of(first, second, third).iterator();
+        Iterator<SourcePartition> remaining = List.of(first, second, third).iterator();
         when(partitions.hasNext()).thenAnswer(invocation -> remaining.hasNext());
         when(partitions.next()).thenAnswer(invocation -> remaining.next());
 

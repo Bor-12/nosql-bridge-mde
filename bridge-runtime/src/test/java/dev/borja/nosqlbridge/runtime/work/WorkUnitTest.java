@@ -4,6 +4,7 @@ package dev.borja.nosqlbridge.runtime.work;
 import java.util.UUID;
 import java.util.Map;
 import java.util.HashSet;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
@@ -56,7 +57,7 @@ class WorkUnitTest {
 
         assertEquals(unit, restored);
         assertEquals(unit.hashCode(), restored.hashCode());
-        var units = new HashSet<WorkUnit>();
+        Set<WorkUnit> units = new HashSet<>();
         units.add(unit);
         units.add(restored);
         assertEquals(1, units.size());

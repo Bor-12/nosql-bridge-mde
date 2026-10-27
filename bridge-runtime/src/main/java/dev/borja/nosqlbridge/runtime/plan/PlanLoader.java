@@ -1,6 +1,7 @@
 package dev.borja.nosqlbridge.runtime.plan;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -15,7 +16,7 @@ public class PlanLoader {
     }
 
     public BridgeExecutionPlan load(Path path) throws IOException {
-        try (var input = Files.newInputStream(path)) {
+        try (InputStream input = Files.newInputStream(path)) {
             return objectMapper.readValue(input, BridgeExecutionPlan.class);
         }
     }
