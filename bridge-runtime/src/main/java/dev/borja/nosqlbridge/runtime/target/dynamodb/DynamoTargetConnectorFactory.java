@@ -10,10 +10,17 @@ import dev.borja.nosqlbridge.runtime.target.TargetConnectorFactory;
 public class DynamoTargetConnectorFactory implements TargetConnectorFactory {
     private final ObjectProvider<DynamoDbClient> client;
     private final DynamoLogicalValueConverter converter;
+    private final DynamoBatchWriteProperties batchWriteProperties;
 
     public DynamoTargetConnectorFactory(ObjectProvider<DynamoDbClient> client, DynamoLogicalValueConverter converter) {
+        this(client, converter, new DynamoBatchWriteProperties(null, null, null));
+    }
+
+    public DynamoTargetConnectorFactory(ObjectProvider<DynamoDbClient> client, DynamoLogicalValueConverter converter,
+            DynamoBatchWriteProperties batchWriteProperties) {
         this.client = client;
         this.converter = converter;
+        this.batchWriteProperties = batchWriteProperties;
     }
 
     @Override
@@ -23,6 +30,6 @@ public class DynamoTargetConnectorFactory implements TargetConnectorFactory {
 
     @Override
     public TargetConnector create(ConnectorPlan plan) {
-        return new DynamoTargetConnector(client.getObject(), converter, plan);
+        return new DynamoTargetConnector(client.getObject(), converter, plan, batchWriteProperties);
     }
 }
