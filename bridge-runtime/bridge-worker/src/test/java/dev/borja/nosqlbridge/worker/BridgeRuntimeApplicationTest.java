@@ -249,7 +249,13 @@ class BridgeRuntimeApplicationTest {
         }));
         assertEquals(0, BridgeRuntimeApplication.run(application, error, "--plan", plan.toString(), "--config", config.toString()));
         Files.writeString(config, "bridge:\n  dynamodb:\n    region: eu-west-1\n");
-        assertEquals(1, BridgeRuntimeApplication.run(new SpringApplication(PropertiesConfiguration.class), error,
+        SpringApplication missingConfiguration = new SpringApplication(PropertiesConfiguration.class);
+        missingConfiguration.addInitializers(context -> context.addApplicationListener(event -> {
+            if (event instanceof org.springframework.context.event.ContextRefreshedEvent) {
+                context.getBean(MongoProperties.class);
+            }
+        }));
+        assertEquals(1, BridgeRuntimeApplication.run(missingConfiguration, error,
                 "--plan", plan.toString(), "--config", config.toString()));
         assertTrue(errors.toString(StandardCharsets.UTF_8).contains("bridge.mongodb"));
     }

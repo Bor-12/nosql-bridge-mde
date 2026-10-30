@@ -1,5 +1,7 @@
 package dev.borja.nosqlbridge.dynamodb;
 
+import java.util.function.Supplier;
+
 import org.springframework.beans.factory.ObjectProvider;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 
@@ -10,7 +12,7 @@ import dev.borja.nosqlbridge.common.target.TargetConnectorFactory;
 public class DynamoTargetConnectorFactory implements TargetConnectorFactory {
     private final ObjectProvider<DynamoDbClient> client;
     private final DynamoLogicalValueConverter converter;
-    private final DynamoBatchWriteProperties batchWriteProperties;
+    private final Supplier<DynamoBatchWriteProperties> batchWriteProperties;
 
     public DynamoTargetConnectorFactory(ObjectProvider<DynamoDbClient> client, DynamoLogicalValueConverter converter) {
         this(client, converter, new DynamoBatchWriteProperties(null, null, null));
@@ -18,6 +20,11 @@ public class DynamoTargetConnectorFactory implements TargetConnectorFactory {
 
     public DynamoTargetConnectorFactory(ObjectProvider<DynamoDbClient> client, DynamoLogicalValueConverter converter,
             DynamoBatchWriteProperties batchWriteProperties) {
+        this(client, converter, () -> batchWriteProperties);
+    }
+
+    public DynamoTargetConnectorFactory(ObjectProvider<DynamoDbClient> client, DynamoLogicalValueConverter converter,
+            Supplier<DynamoBatchWriteProperties> batchWriteProperties) {
         this.client = client;
         this.converter = converter;
         this.batchWriteProperties = batchWriteProperties;
@@ -30,6 +37,6 @@ public class DynamoTargetConnectorFactory implements TargetConnectorFactory {
 
     @Override
     public TargetConnector create(ConnectorPlan plan) {
-        return new DynamoTargetConnector(client.getObject(), converter, plan, batchWriteProperties);
+        return new DynamoTargetConnector(client.getObject(), converter, plan, batchWriteProperties.get());
     }
 }

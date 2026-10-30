@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.core.NestedExceptionUtils;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.identity.spi.AwsCredentialsIdentity;
 import software.amazon.awssdk.regions.Region;
@@ -66,10 +67,18 @@ class DynamoConnectorConfigurationTest {
     }
 
     @Test
-    void rejectsInvalidBatchPolicyDuringConfigurationBinding() {
+    void rejectsInvalidBatchPolicyWhenConnectorIsRequested() {
         contextRunner.withPropertyValues("bridge.dynamodb.region=eu-west-1",
                         "bridge.dynamodb.batch-write.max-retries=-1")
-                .run(context -> assertTrue(context.getStartupFailure() != null));
+                .withBean(DynamoDbClient.class, () -> mock(DynamoDbClient.class))
+                .run(context -> {
+                    assertNull(context.getStartupFailure());
+                    RuntimeException failure = assertThrows(RuntimeException.class,
+                            () -> context.getBean(TargetConnectorFactory.class).create(new ConnectorPlan("dynamodb",
+                                    Map.of("table", "Products", "partitionKey", "id"))));
+                    assertEquals("DynamoDB batch maxRetries must not be negative.",
+                            NestedExceptionUtils.getMostSpecificCause(failure).getMessage());
+                });
     }
 
     @Test
@@ -101,15 +110,24 @@ class DynamoConnectorConfigurationTest {
     }
 
     @Test
-    void rejectsMissingRegion() {
-        contextRunner.run(context -> assertTrue(context.getStartupFailure() != null));
+    void rejectsMissingRegionWhenConnectorIsRequested() {
+        contextRunner.run(context -> {
+            assertNull(context.getStartupFailure());
+            RuntimeException failure = assertThrows(RuntimeException.class,
+                    () -> context.getBean(TargetConnectorFactory.class).create(new ConnectorPlan("dynamodb",
+                            Map.of("table", "Products", "partitionKey", "id"))));
+            assertTrue(NestedExceptionUtils.getMostSpecificCause(failure).getMessage().contains("bridge.dynamodb.region"));
+        });
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"relative/path", "http:///missing-host", "ftp://dynamodb-local:8000", "http://[invalid"})
     void rejectsInvalidEndpoint(String endpoint) {
         contextRunner.withPropertyValues("bridge.dynamodb.region=eu-west-1",
-                "bridge.dynamodb.endpoint=" + endpoint).run(context -> assertTrue(context.getStartupFailure() != null));
+                "bridge.dynamodb.endpoint=" + endpoint).run(context -> {
+                    assertNull(context.getStartupFailure());
+                    assertThrows(RuntimeException.class, () -> context.getBean(DynamoDbClient.class));
+                });
     }
 
     @Test
@@ -140,7 +158,7 @@ class DynamoConnectorConfigurationTest {
         DynamoDbClient client = mock(DynamoDbClient.class);
         DynamoLogicalValueConverter converter = new DynamoLogicalValueConverter();
 
-        contextRunner.withPropertyValues("bridge.dynamodb.region=eu-west-1").withBean(DynamoDbClient.class, () -> client)
+        contextRunner.withBean(DynamoDbClient.class, () -> client)
                 .withBean(DynamoLogicalValueConverter.class, () -> converter)
                 .run(context -> {
                     assertNull(context.getStartupFailure());

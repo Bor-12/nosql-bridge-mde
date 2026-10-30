@@ -3,8 +3,10 @@ package dev.borja.nosqlbridge.dynamodb;
 import java.time.Duration;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Lazy;
 
 @ConfigurationProperties("bridge.dynamodb.batch-write")
+@Lazy
 public record DynamoBatchWriteProperties(Integer maxRetries, Duration initialBackoff, Duration maxBackoff) {
 
     public DynamoBatchWriteProperties {

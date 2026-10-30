@@ -37,7 +37,7 @@ public class DynamoConnectorConfiguration {
 
     @Bean
     public DynamoTargetConnectorFactory dynamoTargetConnectorFactory(ObjectProvider<DynamoDbClient> client,
-            DynamoLogicalValueConverter converter, DynamoBatchWriteProperties batchWriteProperties) {
-        return new DynamoTargetConnectorFactory(client, converter, batchWriteProperties);
+            DynamoLogicalValueConverter converter, ObjectProvider<DynamoBatchWriteProperties> batchWriteProperties) {
+        return new DynamoTargetConnectorFactory(client, converter, batchWriteProperties::getObject);
     }
 }
