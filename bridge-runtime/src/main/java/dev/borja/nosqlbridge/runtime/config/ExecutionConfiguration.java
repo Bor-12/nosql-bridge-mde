@@ -39,12 +39,14 @@ public class ExecutionConfiguration {
 
     @Bean
     @ConditionalOnProperty(name = "bridge.execution.plan")
+    @ConditionalOnProperty(name = "bridge.runtime.mode", havingValue = "local", matchIfMissing = true)
     public PlanLoader planLoader(ObjectMapper objectMapper) {
         return new PlanLoader(objectMapper);
     }
 
     @Bean
     @ConditionalOnProperty(name = "bridge.execution.plan")
+    @ConditionalOnProperty(name = "bridge.runtime.mode", havingValue = "local", matchIfMissing = true)
     public PlanValidator planValidator() {
         return new PlanValidator();
     }
@@ -68,6 +70,7 @@ public class ExecutionConfiguration {
 
     @Bean
     @ConditionalOnProperty(name = "bridge.execution.plan")
+    @ConditionalOnProperty(name = "bridge.runtime.mode", havingValue = "local", matchIfMissing = true)
     public PlanRunner planRunner(@Value("${bridge.execution.plan}") String planPath,
             PlanLoader planLoader, PlanValidator planValidator,
             TechnologyRegistry connectorRegistry,

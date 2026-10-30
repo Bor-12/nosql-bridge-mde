@@ -61,6 +61,76 @@ class WorkerConsumerTest {
     }
 
     @Test
+    void stopsReceivingNewWorkAfterShutdownBegins() {
+        consumer.stopReceiving();
+
+        assertTrue(consumer.processOne().isEmpty());
+
+        verifyNoInteractions(workQueue, workUnitExecutor);
+    }
+
+    @Test
+    void leavesDeliveryUnprocessedWhenShutdownBeginsDuringReceive() {
+        when(workQueue.receive()).thenAnswer(invocation -> {
+            consumer.stopReceiving();
+            return Optional.of(delivery);
+        });
+
+        assertTrue(consumer.processOne().isEmpty());
+
+        verify(workQueue).receive();
+        verifyNoMoreInteractions(workQueue);
+        verifyNoInteractions(workUnitExecutor);
+    }
+
+    @Test
+    void allowsAnActiveExecutionToFinishAndAcknowledgeDuringGracefulShutdown() {
+        WorkUnitResult result = new WorkUnitResult(unit.migrationId(), unit.workUnitId(), 5, 5);
+        when(workQueue.receive()).thenReturn(Optional.of(delivery));
+        when(workUnitExecutor.execute(unit, plan)).thenAnswer(invocation -> {
+            consumer.stopReceiving();
+            return result;
+        });
+
+        assertSame(result, consumer.processOne().orElseThrow());
+
+        verify(workQueue).acknowledge(delivery);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"beforeReceive", "afterReceive", "afterExecution"})
+    void neverAcknowledgesInterruptedProcessing(String interruptionPoint) {
+        WorkUnitResult result = new WorkUnitResult(unit.migrationId(), unit.workUnitId(), 5, 5);
+        if ("beforeReceive".equals(interruptionPoint)) {
+            Thread.currentThread().interrupt();
+        } else {
+            when(workQueue.receive()).thenAnswer(invocation -> {
+                if ("afterReceive".equals(interruptionPoint)) {
+                    Thread.currentThread().interrupt();
+                }
+                return Optional.of(delivery);
+            });
+            if ("afterExecution".equals(interruptionPoint)) {
+                when(workUnitExecutor.execute(unit, plan)).thenAnswer(invocation -> {
+                    Thread.currentThread().interrupt();
+                    return result;
+                });
+            }
+        }
+        try {
+            assertThrows(IllegalStateException.class, consumer::processOne);
+            assertTrue(Thread.currentThread().isInterrupted());
+            org.mockito.Mockito.verify(workQueue, org.mockito.Mockito.never())
+                    .acknowledge(org.mockito.ArgumentMatchers.any(Delivery.class));
+            if (!"afterExecution".equals(interruptionPoint)) {
+                verifyNoInteractions(workUnitExecutor);
+            }
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
     void rejectsNullDependencies() {
         assertThrows(IllegalArgumentException.class, () -> new WorkerConsumer(null, workUnitExecutor));
         assertThrows(IllegalArgumentException.class, () -> new WorkerConsumer(workQueue, null));

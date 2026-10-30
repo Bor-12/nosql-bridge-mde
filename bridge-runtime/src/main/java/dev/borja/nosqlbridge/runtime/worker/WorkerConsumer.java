@@ -12,6 +12,7 @@ public class WorkerConsumer {
 
     private final WorkQueue workQueue;
     private final WorkUnitExecutor workUnitExecutor;
+    private volatile boolean stopping;
 
     public WorkerConsumer(WorkQueue workQueue, WorkUnitExecutor workUnitExecutor) {
         if (workQueue == null) {
@@ -25,14 +26,30 @@ public class WorkerConsumer {
     }
 
     public Optional<WorkUnitResult> processOne() {
-        Optional<Delivery> received = workQueue.receive();
-        if (received.isEmpty()) {
+        if (stopping) {
             return Optional.empty();
         }
+        checkInterrupted();
+        Optional<Delivery> received = workQueue.receive();
+        if (received.isEmpty() || stopping) {
+            return Optional.empty();
+        }
+        checkInterrupted();
         Delivery delivery = received.orElseThrow();
         WorkUnitMessage message = delivery.message();
         WorkUnitResult result = workUnitExecutor.execute(message.workUnit(), message.plan());
+        checkInterrupted();
         workQueue.acknowledge(delivery);
         return Optional.of(result);
+    }
+
+    public void stopReceiving() {
+        stopping = true;
+    }
+
+    private void checkInterrupted() {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new IllegalStateException("Worker processing interrupted.");
+        }
     }
 }
