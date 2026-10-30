@@ -40,7 +40,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>dev.borja.nosqlbridge.worker.BridgeRuntimeApplication</mainClass>
+                    <mainClass>dev.borja.nosqlbridge.worker.BridgeWorkerApplication</mainClass>
                 </configuration>
             </plugin>
         </plugins>

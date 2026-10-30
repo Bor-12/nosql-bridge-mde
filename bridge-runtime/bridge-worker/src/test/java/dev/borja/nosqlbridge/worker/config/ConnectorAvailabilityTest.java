@@ -33,7 +33,7 @@ import dev.borja.nosqlbridge.common.work.WorkUnitMessage;
 import dev.borja.nosqlbridge.dynamodb.DynamoTargetConnector;
 import dev.borja.nosqlbridge.mongodb.MongoSourceConnector;
 import dev.borja.nosqlbridge.sqs.SqsWorkQueue;
-import dev.borja.nosqlbridge.worker.BridgeRuntimeApplication;
+import dev.borja.nosqlbridge.worker.BridgeWorkerApplication;
 import dev.borja.nosqlbridge.worker.WorkerConsumer;
 import dev.borja.nosqlbridge.worker.execution.WorkUnitExecutor;
 import dev.borja.nosqlbridge.worker.runner.PlanRunner;
@@ -55,7 +55,7 @@ import static org.mockito.Mockito.when;
 class ConnectorAvailabilityTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-            .withUserConfiguration(BridgeRuntimeApplication.class);
+            .withUserConfiguration(BridgeWorkerApplication.class);
     private final ConnectorPlan sourcePlan = new ConnectorPlan("mongodb",
             Map.of("database", "shop", "collection", "products"));
     private final ConnectorPlan targetPlan = new ConnectorPlan("dynamodb",
