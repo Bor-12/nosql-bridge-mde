@@ -24,4 +24,16 @@
             <scope>runtime</scope>
         </dependency>
     </dependencies>
+    <build>
+        <finalName>bridge-orchestrator</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>dev.borja.nosqlbridge.orchestrator.BridgeOrchestratorApplication</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>

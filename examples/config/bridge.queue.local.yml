@@ -1,0 +1,12 @@
+bridge:
+  mongodb:
+    uri: mongodb://localhost:27017
+  dynamodb:
+    endpoint: http://localhost:8000
+    region: us-east-1
+  sqs:
+    endpoint: http://localhost:9324
+    region: us-east-1
+    queue-url: http://localhost:9324/000000000000/migration-work
+  orchestrator:
+    records-per-partition: 1
