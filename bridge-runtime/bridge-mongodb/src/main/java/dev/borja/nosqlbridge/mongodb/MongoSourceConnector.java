@@ -6,6 +6,7 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.model.Collation;
 import org.bson.Document;
 
 import dev.borja.nosqlbridge.common.model.LogicalRecord;
@@ -52,8 +53,10 @@ public class MongoSourceConnector implements SourceConnector {
     @Override
     public RecordCursor open(SourcePartition partition) {
         MongoIdRange range = MongoIdRange.fromSourcePartition(partition);
-        MongoCollection<Document> collection = mongoClient.getDatabase(databaseName).getCollection(collectionName);
-        return new MongoRecordCursor(collection.find(range.toFilter()).hintString("_id_").iterator());
+        MongoDatabase database = mongoClient.getDatabase(databaseName);
+        MongoCollection<Document> collection = database.getCollection(collectionName);
+        return new MongoRecordCursor(collection.find(range.toFilter()).hintString("_id_")
+                .collation(Collation.builder().locale("simple").build()).iterator());
     }
 
     private String requiredConfig(Map<String, String> config, String name) {

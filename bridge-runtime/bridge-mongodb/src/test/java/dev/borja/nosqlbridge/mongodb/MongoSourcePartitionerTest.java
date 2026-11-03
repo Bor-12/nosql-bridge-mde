@@ -11,10 +11,15 @@ import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import org.bson.Document;
+import org.bson.BsonDocument;
+import org.bson.BsonValue;
+import org.bson.BsonObjectId;
 import org.bson.types.ObjectId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -40,9 +45,9 @@ class MongoSourcePartitionerTest {
     @Mock
     private MongoCollection<Document> collection;
     @Mock
-    private FindIterable<Document> documents;
+    private FindIterable<BsonDocument> documents;
     @Mock
-    private MongoCursor<Document> cursor;
+    private MongoCursor<BsonDocument> cursor;
 
     private MongoSourcePartitioner partitioner;
 
@@ -72,7 +77,7 @@ class MongoSourcePartitionerTest {
 
         verify(cursor, times(4)).next();
         verify(cursor).close();
-        verify(collection).find();
+        verify(collection).find(BsonDocument.class);
         verify(documents).projection(new Document("_id", 1));
         verify(documents).sort(new Document("_id", 1));
         verify(documents).hintString("_id_");
@@ -82,7 +87,7 @@ class MongoSourcePartitionerTest {
     @Test
     void dividesSparseIdsIntoContiguousNonOverlappingRanges() {
         ObjectId[] ids = {id(0), id(3), id(10), id(100), id(1000)};
-        stubIds(ids);
+        stubIds((Object[]) ids);
 
         List<SourcePartition> partitions = readAll(2);
 
@@ -91,8 +96,8 @@ class MongoSourcePartitionerTest {
             int matches = 0;
             for (SourcePartition partition : partitions) {
                 MongoIdRange range = MongoIdRange.fromSourcePartition(partition);
-                if ((range.lowerExclusive() == null || id.compareTo(new ObjectId(range.lowerExclusive())) > 0)
-                        && id.compareTo(new ObjectId(range.upperInclusive())) <= 0) {
+                if ((range.lowerExclusive() == null || id.compareTo(BsonDocument.parse(range.lowerExclusive()).getObjectId("value").getValue()) > 0)
+                        && id.compareTo(BsonDocument.parse(range.upperInclusive()).getObjectId("value").getValue()) <= 0) {
                     matches++;
                 }
             }
@@ -183,10 +188,10 @@ class MongoSourcePartitionerTest {
     }
 
     @Test
-    void rejectsNonObjectIdValuesAndClosesCursor() {
+    void rejectsUnsupportedIdValuesAndClosesCursor() {
         stubQuery();
         when(cursor.hasNext()).thenReturn(true);
-        when(cursor.next()).thenReturn(new Document("_id", "product-1"));
+        when(cursor.next()).thenReturn(BsonDocument.parse("{_id: []}"));
 
         try (SourcePartitionCursor partitions = partitioner.open(10)) {
             assertThrows(IllegalArgumentException.class, partitions::next);
@@ -199,7 +204,7 @@ class MongoSourcePartitionerTest {
     void rejectsMissingIdAndClosesCursor() {
         stubQuery();
         when(cursor.hasNext()).thenReturn(true);
-        when(cursor.next()).thenReturn(new Document());
+        when(cursor.next()).thenReturn(new BsonDocument());
 
         try (SourcePartitionCursor partitions = partitioner.open(10)) {
             assertThrows(IllegalArgumentException.class, partitions::next);
@@ -207,26 +212,7 @@ class MongoSourcePartitionerTest {
         }
     }
 
-    @Test
-    void rejectsDuplicateIdsAcrossPartitionBoundary() {
-        stubIds(id(1), id(1));
 
-        try (SourcePartitionCursor partitions = partitioner.open(1)) {
-            assertEquals(range(null, id(1)), partitions.next());
-            assertThrows(IllegalArgumentException.class, partitions::next);
-            verify(cursor).close();
-        }
-    }
-
-    @Test
-    void rejectsOutOfOrderIds() {
-        stubIds(id(2), id(1));
-
-        try (SourcePartitionCursor partitions = partitioner.open(10)) {
-            assertThrows(IllegalArgumentException.class, partitions::next);
-            verify(cursor).close();
-        }
-    }
 
     @Test
     void closesCursorWhenAvailabilityCheckFails() {
@@ -276,25 +262,88 @@ class MongoSourcePartitionerTest {
         return result;
     }
 
-    private void stubIds(ObjectId... ids) {
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2, 3, 5, 10, 20})
+    void stringRangesCoverEveryIdExactlyOnceWithBinaryOrdering(int size) {
+        String[] ids = {"", "000000000000000000000001", "TFG-E2E-001", "TFG-E2E-002",
+                "TFG-E2E-003", "a", "aa", "é", "\uE000", "\uD800\uDC00"};
+        stubIds((Object[]) ids);
+
+        List<SourcePartition> partitions = readAll(size);
+
+        assertEquals((ids.length + size - 1) / size, partitions.size());
+        String previous = null;
+        for (SourcePartition partition : partitions) {
+            MongoIdRange range = MongoIdRange.fromSourcePartition(partition);
+            assertEquals(MongoIdRange.BSON_TYPE, range.type());
+            assertEquals(previous, range.lowerExclusive());
+            previous = range.upperInclusive();
+        }
+        for (String id : ids) {
+            long matches = partitions.stream().map(MongoIdRange::fromSourcePartition)
+                    .filter(range -> (range.lowerExclusive() == null || MongoIdRange.compare(id, BsonDocument.parse(range.lowerExclusive()).getString("value").getValue()) > 0)
+                            && MongoIdRange.compare(id, BsonDocument.parse(range.upperInclusive()).getString("value").getValue()) <= 0).count();
+            assertEquals(1, matches, id);
+        }
+        verify(cursor).close();
+        verify(documents).collation(com.mongodb.client.model.Collation.builder().locale("simple").build());
+    }
+
+    @Test
+    void discoversStringPartitionsIncrementallyAndAcceptsEmptyId() {
+        stubIds("", "TFG-E2E-001", "TFG-E2E-002");
+
+        try (SourcePartitionCursor partitions = partitioner.open(1)) {
+            verifyNoInteractions(cursor);
+            assertEquals(MongoIdRange.fromBson(null, new org.bson.BsonString("")).toSourcePartition(), partitions.next());
+            verify(cursor, times(1)).next();
+            assertEquals(MongoIdRange.fromBson(new org.bson.BsonString(""), new org.bson.BsonString("TFG-E2E-001")).toSourcePartition(), partitions.next());
+            verify(cursor, times(2)).next();
+        }
+        verify(cursor).close();
+    }
+
+
+
+
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2, 3})
+    void keepsConfiguredPartitionSizeAcrossBsonTypes(int size) {
+        stubIds(42, "TFG-E2E-001", id(1));
+        List<SourcePartition> partitions = readAll(size);
+        assertEquals((3 + size - 1) / size, partitions.size());
+        BsonValue previous = null;
+        for (int index = 0; index < partitions.size(); index++) {
+            MongoIdRange range = MongoIdRange.fromSourcePartition(partitions.get(index));
+            assertEquals(previous == null ? null : new BsonDocument("value", previous).toJson(
+                    org.bson.json.JsonWriterSettings.builder().outputMode(org.bson.json.JsonMode.EXTENDED).build()), range.lowerExclusive());
+            previous = BsonDocument.parse(range.upperInclusive()).get("value");
+        }
+        assertEquals(new BsonObjectId(id(1)), previous);
+        verify(cursor).close();
+    }
+
+    private void stubIds(Object... ids) {
         stubQuery();
-        Iterator<ObjectId> iterator = Arrays.asList(ids).iterator();
+        Iterator<Object> iterator = Arrays.asList(ids).iterator();
         when(cursor.hasNext()).thenAnswer(invocation -> iterator.hasNext());
         if (ids.length > 0) {
-            when(cursor.next()).thenAnswer(invocation -> new Document("_id", iterator.next()));
+            when(cursor.next()).thenAnswer(invocation -> new Document("_id", iterator.next()).toBsonDocument());
         }
     }
 
     private void stubQuery() {
-        when(collection.find()).thenReturn(documents);
+        when(collection.find(BsonDocument.class)).thenReturn(documents);
         when(documents.projection(new Document("_id", 1))).thenReturn(documents);
         when(documents.sort(new Document("_id", 1))).thenReturn(documents);
         when(documents.hintString("_id_")).thenReturn(documents);
+        when(documents.collation(com.mongodb.client.model.Collation.builder().locale("simple").build())).thenReturn(documents);
         when(documents.iterator()).thenReturn(cursor);
     }
 
     private SourcePartition range(ObjectId lower, ObjectId upper) {
-        return new MongoIdRange(lower == null ? null : lower.toHexString(), upper.toHexString()).toSourcePartition();
+        return MongoIdRange.fromBson(lower == null ? null : new BsonObjectId(lower), new BsonObjectId(upper)).toSourcePartition();
     }
 
     private ObjectId id(long value) {

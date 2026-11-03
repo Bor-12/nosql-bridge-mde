@@ -37,6 +37,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class MongoSourceConnectorTest {
@@ -86,6 +87,7 @@ class MongoSourceConnectorTest {
         when(database.getCollection("products")).thenReturn(collection);
         when(collection.find(filter)).thenReturn(documents);
         when(documents.hintString("_id_")).thenReturn(documents);
+        when(documents.collation(com.mongodb.client.model.Collation.builder().locale("simple").build())).thenReturn(documents);
         when(documents.iterator()).thenReturn(mongoCursor);
         when(mongoCursor.next()).thenReturn(new Document("_id", new ObjectId(upper)).append("name", "Product"));
 
@@ -111,6 +113,7 @@ class MongoSourceConnectorTest {
         when(database.getCollection("products")).thenReturn(collection);
         when(collection.find(filter)).thenReturn(documents);
         when(documents.hintString("_id_")).thenReturn(documents);
+        when(documents.collation(com.mongodb.client.model.Collation.builder().locale("simple").build())).thenReturn(documents);
         when(documents.iterator()).thenReturn(mongoCursor);
         when(mongoCursor.hasNext()).thenReturn(false);
 
@@ -134,6 +137,40 @@ class MongoSourceConnectorTest {
         assertThrows(IllegalArgumentException.class,
                 () -> connector.open(new SourcePartition(MongoIdRange.TYPE, Map.of())));
         verifyNoInteractions(mongoClient);
+    }
+
+    @Test
+    void rejectsMalformedBsonPartitionsBeforeAccessingMongo() {
+        for (Map<String, String> parameters : List.of(
+                Map.<String, String>of(),
+                Map.of("upperInclusive", "broken"),
+                Map.of("upperInclusive", "{value: []}"),
+                Map.of("upperInclusive", "{value: 1}", "lowerExclusive", "{}"),
+                Map.of("upperInclusive", "{value: 1}", "extra", "unexpected"))) {
+            SourcePartition partition = new SourcePartition(MongoIdRange.BSON_TYPE, parameters);
+            assertThrows(IllegalArgumentException.class, () -> connector.open(partition));
+        }
+        verifyNoInteractions(mongoClient, database, collection, mongoCursor);
+    }
+
+    @Test
+    void opensBsonPartitionWithoutAdditionalQueries() {
+        MongoIdRange range = MongoIdRange.fromBson(new org.bson.BsonString("$a"), new org.bson.BsonString("$b"));
+        when(mongoClient.getDatabase("shop")).thenReturn(database);
+        when(database.getCollection("products")).thenReturn(collection);
+        when(collection.find(range.toFilter())).thenReturn(documents);
+        when(documents.hintString("_id_")).thenReturn(documents);
+        when(documents.collation(com.mongodb.client.model.Collation.builder().locale("simple").build())).thenReturn(documents);
+        when(documents.iterator()).thenReturn(mongoCursor);
+
+        try (RecordCursor cursor = connector.open(range.toSourcePartition())) {
+            assertFalse(cursor.hasNext());
+        }
+
+        verify(database).getCollection("products");
+        verify(collection).find(range.toFilter());
+        verifyNoMoreInteractions(database, collection);
+        verify(mongoCursor).close();
     }
 
     @Test

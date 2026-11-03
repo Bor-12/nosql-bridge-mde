@@ -4,8 +4,10 @@ import java.util.NoSuchElementException;
 
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
+import com.mongodb.client.model.Collation;
 import org.bson.Document;
-import org.bson.types.ObjectId;
+import org.bson.BsonDocument;
+import org.bson.BsonValue;
 
 import dev.borja.nosqlbridge.common.source.partitioning.SourcePartitionCursor;
 import dev.borja.nosqlbridge.common.source.partitioning.SourcePartitioner;
@@ -27,23 +29,24 @@ public class MongoSourcePartitioner implements SourcePartitioner {
         if (recordsPerPartition <= 0) {
             throw new IllegalArgumentException("Records per partition must be positive.");
         }
-        MongoCursor<Document> cursor = collection.find()
+        MongoCursor<BsonDocument> cursor = collection.find(BsonDocument.class)
                 .projection(new Document("_id", 1))
                 .sort(new Document("_id", 1))
                 .hintString("_id_")
+                .collation(Collation.builder().locale("simple").build())
                 .iterator();
         return new PartitionCursor(cursor, recordsPerPartition);
     }
 
     private static final class PartitionCursor implements SourcePartitionCursor {
 
-        private final MongoCursor<Document> cursor;
+        private final MongoCursor<BsonDocument> cursor;
         private final int recordsPerPartition;
-        private String upper;
+        private BsonValue upper;
         private boolean exhausted;
         private boolean closed;
 
-        private PartitionCursor(MongoCursor<Document> cursor, int recordsPerPartition) {
+        private PartitionCursor(MongoCursor<BsonDocument> cursor, int recordsPerPartition) {
             this.cursor = cursor;
             this.recordsPerPartition = recordsPerPartition;
         }
@@ -73,25 +76,19 @@ public class MongoSourcePartitioner implements SourcePartitioner {
                 throw new NoSuchElementException("No more source partitions.");
             }
             try {
-                String lower = upper;
+                BsonValue lower = upper;
                 int count = 0;
                 do {
-                    Object id = cursor.next().get("_id");
-                    if (!(id instanceof ObjectId objectId)) {
-                        throw new IllegalArgumentException("MongoDB partitioning requires ObjectId _id values.");
-                    }
-                    String next = objectId.toHexString();
-                    if (upper != null && next.compareTo(upper) <= 0) {
-                        throw new IllegalArgumentException("MongoDB partitioning requires strictly increasing unique ids.");
-                    }
-                    upper = next;
+                    BsonValue id = cursor.next().get("_id");
+                    MongoIdRange.validate(id);
+                    upper = id;
                     count++;
                 } while (count < recordsPerPartition && cursor.hasNext());
                 if (!cursor.hasNext()) {
                     exhausted = true;
                     close();
                 }
-                return new MongoIdRange(lower, upper).toSourcePartition();
+                return MongoIdRange.fromBson(lower, upper).toSourcePartition();
             } catch (RuntimeException | Error failure) {
                 closeAfterFailure(failure);
                 throw failure;
