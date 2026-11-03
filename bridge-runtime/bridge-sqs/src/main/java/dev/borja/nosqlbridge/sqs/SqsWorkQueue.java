@@ -20,6 +20,7 @@ import dev.borja.nosqlbridge.common.work.WorkUnitMessageSerializer;
 public class SqsWorkQueue implements WorkQueue {
 
     private static final int MAX_MESSAGE_BYTES = 1_048_576;
+    private static final int DEFAULT_MAX_MESSAGE_BYTES = 262_144;
 
     private final SqsClient client;
     private final WorkUnitMessageSerializer serializer;
@@ -86,6 +87,10 @@ public class SqsWorkQueue implements WorkQueue {
         String configured = client.getQueueAttributes(GetQueueAttributesRequest.builder().queueUrl(queueUrl)
                 .attributeNames(QueueAttributeName.MAXIMUM_MESSAGE_SIZE).build())
                 .attributes().get(QueueAttributeName.MAXIMUM_MESSAGE_SIZE);
+        if (configured == null) {
+            cachedMaximumMessageSize = DEFAULT_MAX_MESSAGE_BYTES;
+            return cachedMaximumMessageSize;
+        }
         int limit;
         try {
             limit = Integer.parseInt(configured);

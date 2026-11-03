@@ -226,12 +226,13 @@ class SqsWorkQueueTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"invalid", "0", "-1"})
+    @ValueSource(strings = {"invalid", "", " ", "0", "-1", "2147483648"})
     void refusesPublishingWhenQueueLimitIsInvalid(String limit) {
         stubLimit(limit);
         SqsWorkQueue queue = queue();
 
-        assertThrows(IllegalStateException.class, () -> queue.publish(messageWithName("test")));
+        IllegalStateException failure = assertThrows(IllegalStateException.class, () -> queue.publish(messageWithName("test")));
+        assertEquals("SQS queue returned an invalid MaximumMessageSize.", failure.getMessage());
 
         verify(client, never()).sendMessage(any(SendMessageRequest.class));
         stubLimit("1048576");
@@ -241,11 +242,49 @@ class SqsWorkQueueTest {
     }
 
     @Test
-    void refusesPublishingWhenQueueLimitIsMissing() {
+    void usesAndCachesConservativeLimitWhenQueueAttributeIsMissing() {
+        when(client.getQueueAttributes(any(GetQueueAttributesRequest.class)))
+                .thenReturn(GetQueueAttributesResponse.builder().attributes(Map.of()).build());
+        SqsWorkQueue queue = queue();
+        WorkUnitMessage message = messageWithName("test");
+
+        queue.publish(message);
+        queue.publish(message);
+
+        verify(client).getQueueAttributes(any(GetQueueAttributesRequest.class));
+        verify(client, times(2)).sendMessage(SendMessageRequest.builder().queueUrl(QUEUE_URL)
+                .messageBody(serializer.serialize(message)).build());
+        verifyNoMoreInteractions(client);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {262143, 262144, 262145})
+    void enforcesConservativeLimitAtByteBoundaryWhenAttributeIsMissing(int bytes) {
         when(client.getQueueAttributes(any(GetQueueAttributesRequest.class)))
                 .thenReturn(GetQueueAttributesResponse.builder().build());
+        WorkUnitMessage message = messageWithSize(bytes);
+        assertEquals(bytes, serializer.serialize(message).getBytes(StandardCharsets.UTF_8).length);
 
-        assertThrows(IllegalStateException.class, () -> queue().publish(messageWithName("test")));
+        if (bytes <= 262_144) {
+            queue().publish(message);
+            verify(client).sendMessage(any(SendMessageRequest.class));
+        } else {
+            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> queue().publish(message));
+            assertEquals("Work unit message is 262145 UTF-8 bytes; SQS queue limit is 262144.", failure.getMessage());
+            verify(client, never()).sendMessage(any(SendMessageRequest.class));
+        }
+    }
+
+    @Test
+    void checksUtf8BytesAgainstConservativeLimitWhenAttributeIsMissing() {
+        when(client.getQueueAttributes(any(GetQueueAttributesRequest.class)))
+                .thenReturn(GetQueueAttributesResponse.builder().build());
+        WorkUnitMessage message = messageWithName("é".repeat(140_000));
+        String json = serializer.serialize(message);
+        assertTrue(json.length() < 262_144);
+        assertTrue(json.getBytes(StandardCharsets.UTF_8).length > 262_144);
+
+        assertThrows(IllegalArgumentException.class, () -> queue().publish(message));
 
         verify(client, never()).sendMessage(any(SendMessageRequest.class));
     }
