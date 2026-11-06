@@ -1,5 +1,16 @@
 name: nosql-bridge-local
 
+x-bridge-environment: &bridge-environment
+  BRIDGE_MONGODB_URI: mongodb://mongodb:27017
+  BRIDGE_DYNAMODB_ENDPOINT: http://dynamodb-local:8000
+  BRIDGE_SQS_ENDPOINT: http://elasticmq:9324
+  BRIDGE_SQS_QUEUE_URL: http://elasticmq:9324/000000000000/migration-work
+  AWS_REGION: us-east-1
+  AWS_ACCESS_KEY_ID: dummy
+  AWS_SECRET_ACCESS_KEY: dummy
+  AWS_EC2_METADATA_DISABLED: "true"
+  BRIDGE_RECORDS_PER_PARTITION: ${BRIDGE_RECORDS_PER_PARTITION:-1000}
+
 services:
   mongodb:
     image: mongodb/mongodb-community-server:8.0-ubi8
@@ -18,6 +29,53 @@ services:
       - "8000:8000"
     volumes:
       - dynamodb-data:/home/dynamodblocal/data
+
+  elasticmq:
+    image: softwaremill/elasticmq-native:latest
+    ports:
+      - "${ELASTICMQ_HOST_PORT:-9324}:9324"
+    volumes:
+      - type: bind
+        source: ./examples/config/elasticmq.conf
+        target: /opt/elasticmq.conf
+        read_only: true
+        bind:
+          create_host_path: false
+
+  worker:
+    image: nosql-bridge-worker:1.0.0
+    pull_policy: never
+    environment: *bridge-environment
+    command: ["--config", "/run/bridge/config.yml"]
+    restart: unless-stopped
+    volumes:
+      - type: bind
+        source: ./examples/config/bridge.container.yml
+        target: /run/bridge/config.yml
+        read_only: true
+        bind:
+          create_host_path: false
+
+  orchestrator:
+    image: nosql-bridge-orchestrator:1.0.0
+    pull_policy: never
+    profiles: ["migration"]
+    environment: *bridge-environment
+    command: ["--plan", "/run/bridge/plan.json", "--config", "/run/bridge/config.yml"]
+    restart: "no"
+    volumes:
+      - type: bind
+        source: ./examples/config/bridge.container.yml
+        target: /run/bridge/config.yml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${BRIDGE_PLAN_PATH:-./bridge-dsl/test-inputs/Prueba.plan.json}
+        target: /run/bridge/plan.json
+        read_only: true
+        bind:
+          create_host_path: false
 
 volumes:
   mongodb-data:
