@@ -1,0 +1,14 @@
+spring:
+  main:
+    web-application-type: none
+
+bridge:
+  mongodb:
+    uri: ${BRIDGE_MONGODB_URI}
+  sqs:
+    region: ${AWS_REGION}
+    queue-url: ${BRIDGE_SQS_QUEUE_URL}
+  dynamodb:
+    region: ${AWS_REGION}
+  orchestrator:
+    records-per-partition: ${BRIDGE_RECORDS_PER_PARTITION:1000}
