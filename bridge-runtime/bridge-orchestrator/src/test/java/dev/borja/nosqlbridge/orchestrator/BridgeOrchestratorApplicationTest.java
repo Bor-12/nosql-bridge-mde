@@ -21,6 +21,8 @@ import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
 import org.bson.Document;
+import org.bson.BsonDocument;
+import org.bson.BsonObjectId;
 import org.bson.types.ObjectId;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -104,7 +106,7 @@ class BridgeOrchestratorApplicationTest {
     void publishesThroughRealAutoConfigurationsInEitherArgumentOrderAndClosesContext(boolean reverse) throws Exception {
         Path planPath = planFile();
         Path config = configFile("2");
-        MongoCursor<Document> cursor = prepareMongo(4);
+        MongoCursor<BsonDocument> cursor = prepareMongo(4);
         prepareSqs();
         SpringApplication application = application();
         String[] args = reverse
@@ -130,8 +132,8 @@ class BridgeOrchestratorApplicationTest {
         assertEquals(first.workUnit().migrationId(), second.workUnit().migrationId());
         assertEquals(new WorkUnitId(0), first.workUnit().workUnitId());
         assertEquals(new WorkUnitId(1), second.workUnit().workUnitId());
-        assertEquals(new MongoIdRange(null, id(2).toHexString()).toSourcePartition(), first.workUnit().sourcePartition());
-        assertEquals(new MongoIdRange(id(2).toHexString(), id(4).toHexString()).toSourcePartition(), second.workUnit().sourcePartition());
+        assertEquals(MongoIdRange.fromBson(null, new BsonObjectId(id(2))).toSourcePartition(), first.workUnit().sourcePartition());
+        assertEquals(MongoIdRange.fromBson(new BsonObjectId(id(2)), new BsonObjectId(id(4))).toSourcePartition(), second.workUnit().sourcePartition());
         assertTrue(outputBytes.toString(StandardCharsets.UTF_8).contains(first.workUnit().migrationId().value().toString()));
         assertTrue(outputBytes.toString(StandardCharsets.UTF_8).contains("2 publish calls completed successfully"));
         assertFalse(requests.getValue().messageBody().contains("mongodb://localhost:27017"));
@@ -146,7 +148,7 @@ class BridgeOrchestratorApplicationTest {
     void usesDefaultPartitionSizeAndFinishesWithoutPublishingForEmptySource() throws Exception {
         Path planPath = planFile();
         Path config = configFile(null);
-        MongoCursor<Document> cursor = prepareMongo(0);
+        MongoCursor<BsonDocument> cursor = prepareMongo(0);
 
         try (MockedStatic<MongoClients> clients = mockStatic(MongoClients.class)) {
             clients.when(() -> MongoClients.create("mongodb://localhost:27017")).thenReturn(mongoClient);
@@ -164,7 +166,7 @@ class BridgeOrchestratorApplicationTest {
     void returnsFailureAndPartialCountWhenThirdSendFailsWithoutGeneratingRemainingUnits() throws Exception {
         Path planPath = planFile();
         Path config = configFile("1");
-        MongoCursor<Document> cursor = prepareMongo(4);
+        MongoCursor<BsonDocument> cursor = prepareMongo(4);
         prepareSqs();
         AtomicInteger calls = new AtomicInteger();
         when(sqsClient.sendMessage(any(SendMessageRequest.class))).thenAnswer(invocation -> {
@@ -361,19 +363,19 @@ class BridgeOrchestratorApplicationTest {
     }
 
     @SuppressWarnings("unchecked")
-    private MongoCursor<Document> prepareMongo(int count) {
+    private MongoCursor<BsonDocument> prepareMongo(int count) {
         MongoDatabase database = mock(MongoDatabase.class);
         MongoCollection<Document> collection = mock(MongoCollection.class);
-        FindIterable<Document> documents = mock(FindIterable.class);
-        MongoCursor<Document> cursor = mock(MongoCursor.class);
-        List<Document> data = new ArrayList<>();
+        FindIterable<BsonDocument> documents = mock(FindIterable.class);
+        MongoCursor<BsonDocument> cursor = mock(MongoCursor.class);
+        List<BsonDocument> data = new ArrayList<>();
         for (int index = 1; index <= count; index++) {
-            data.add(new Document("_id", id(index)));
+            data.add(new BsonDocument("_id", new BsonObjectId(id(index))));
         }
-        Iterator<Document> remaining = data.iterator();
+        Iterator<BsonDocument> remaining = data.iterator();
         when(mongoClient.getDatabase("shop")).thenReturn(database);
         when(database.getCollection("products")).thenReturn(collection);
-        when(collection.find()).thenReturn(documents);
+        when(collection.find(BsonDocument.class)).thenReturn(documents);
         when(documents.projection(new Document("_id", 1))).thenReturn(documents);
         when(documents.sort(new Document("_id", 1))).thenReturn(documents);
         when(documents.hintString("_id_")).thenReturn(documents);

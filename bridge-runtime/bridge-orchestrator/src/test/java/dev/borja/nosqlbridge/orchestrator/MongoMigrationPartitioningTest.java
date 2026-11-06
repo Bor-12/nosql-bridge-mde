@@ -14,6 +14,9 @@ import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
 import org.bson.Document;
+import org.bson.BsonDocument;
+import org.bson.BsonValue;
+import org.bson.BsonObjectId;
 import org.bson.types.ObjectId;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -54,8 +57,8 @@ class MongoMigrationPartitioningTest {
         MongoClient client = mock(MongoClient.class);
         MongoDatabase database = mock(MongoDatabase.class);
         MongoCollection<Document> collection = mock(MongoCollection.class);
-        FindIterable<Document> discovery = mock(FindIterable.class);
-        MongoCursor<Document> discoveryCursor = mock(MongoCursor.class);
+        FindIterable<BsonDocument> discovery = mock(FindIterable.class);
+        MongoCursor<BsonDocument> discoveryCursor = mock(MongoCursor.class);
         List<Object> ids = objectIds
                 ? List.of(new ObjectId("000000000000000000000000"), new ObjectId("000000000000000000000001"),
                         new ObjectId("000000000000000000000003"), new ObjectId("ffffffffffffffffffffffff"))
@@ -64,25 +67,40 @@ class MongoMigrationPartitioningTest {
         Iterator<Object> discoveryIds = ids.iterator();
         when(client.getDatabase("shop")).thenReturn(database);
         when(database.getCollection("products")).thenReturn(collection);
-        when(collection.find()).thenReturn(discovery);
+        when(collection.find(BsonDocument.class)).thenReturn(discovery);
         when(discovery.projection(new Document("_id", 1))).thenReturn(discovery);
         when(discovery.sort(new Document("_id", 1))).thenReturn(discovery);
         when(discovery.hintString("_id_")).thenReturn(discovery);
         when(discovery.collation(Collation.builder().locale("simple").build())).thenReturn(discovery);
         when(discovery.iterator()).thenReturn(discoveryCursor);
         when(discoveryCursor.hasNext()).thenAnswer(invocation -> discoveryIds.hasNext());
-        when(discoveryCursor.next()).thenAnswer(invocation -> new Document("_id", discoveryIds.next()));
+        when(discoveryCursor.next()).thenAnswer(invocation -> new Document("_id", discoveryIds.next()).toBsonDocument());
         when(collection.find(any(Document.class))).thenAnswer(invocation -> {
             Document filter = invocation.getArgument(0);
-            Document bounds = filter.get("_id", Document.class);
-            Object upper = bounds.get("$lte");
-            Object lower = bounds.get("$gt");
+            Document expression = filter.get("$expr", Document.class);
+            List<Document> comparisons = expression.containsKey("$and")
+                    ? expression.getList("$and", Document.class) : List.of(expression);
+            Object upper = null;
+            Object lower = null;
+            for (Document comparison : comparisons) {
+                String operation = comparison.containsKey("$lte") ? "$lte" : "$gt";
+                List<?> operands = (List<?>) comparison.get(operation);
+                BsonValue value = (BsonValue) ((Document) operands.get(1)).get("$literal");
+                Object bound = value.isObjectId() ? value.asObjectId().getValue() : value.asString().getValue();
+                if (operation.equals("$lte")) {
+                    upper = bound;
+                } else {
+                    lower = bound;
+                }
+            }
+            Object upperBound = upper;
+            Object lowerBound = lower;
             assertEquals(objectIds ? ObjectId.class : String.class, upper.getClass());
             if (lower != null) {
                 assertEquals(upper.getClass(), lower.getClass());
             }
             Iterator<Document> matching = ids.stream()
-                    .filter(id -> compareIds(id, upper) <= 0 && (lower == null || compareIds(id, lower) > 0))
+                    .filter(id -> compareIds(id, upperBound) <= 0 && (lowerBound == null || compareIds(id, lowerBound) > 0))
                     .map(id -> new Document("_id", id)).iterator();
             FindIterable<Document> results = mock(FindIterable.class);
             MongoCursor<Document> workerCursor = mock(MongoCursor.class);
@@ -139,8 +157,8 @@ class MongoMigrationPartitioningTest {
         MongoClient client = mock(MongoClient.class);
         MongoDatabase database = mock(MongoDatabase.class);
         MongoCollection<Document> collection = mock(MongoCollection.class);
-        FindIterable<Document> documents = mock(FindIterable.class);
-        MongoCursor<Document> cursor = mock(MongoCursor.class);
+        FindIterable<BsonDocument> documents = mock(FindIterable.class);
+        MongoCursor<BsonDocument> cursor = mock(MongoCursor.class);
         ObjectProvider<MongoClient> provider = new ObjectProvider<>() {
             public MongoClient getObject() { return client; }
         };
@@ -154,19 +172,19 @@ class MongoMigrationPartitioningTest {
         ObjectId second = new ObjectId("000000000000000000000002");
         when(client.getDatabase("shop")).thenReturn(database);
         when(database.getCollection("products")).thenReturn(collection);
-        when(collection.find()).thenReturn(documents);
+        when(collection.find(BsonDocument.class)).thenReturn(documents);
         when(documents.projection(new Document("_id", 1))).thenReturn(documents);
         when(documents.sort(new Document("_id", 1))).thenReturn(documents);
         when(documents.hintString("_id_")).thenReturn(documents);
         when(documents.collation(com.mongodb.client.model.Collation.builder().locale("simple").build())).thenReturn(documents);
         when(documents.iterator()).thenReturn(cursor);
         when(cursor.hasNext()).thenReturn(true);
-        when(cursor.next()).thenReturn(new Document("_id", first), new Document("_id", second));
+        when(cursor.next()).thenReturn(new BsonDocument("_id", new BsonObjectId(first)), new BsonDocument("_id", new BsonObjectId(second)));
 
         try (WorkUnitCursor units = new MigrationPartitioner(registry).open(plan, migrationId, 2)) {
             verifyNoInteractions(cursor);
             assertEquals(new WorkUnit(migrationId, new WorkUnitId(0),
-                    new MongoIdRange(null, second.toHexString()).toSourcePartition()), units.next());
+                    MongoIdRange.fromBson(null, new BsonObjectId(second)).toSourcePartition()), units.next());
             verify(cursor, times(2)).next();
             verify(cursor, never()).close();
         }
