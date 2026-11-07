@@ -9,6 +9,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
@@ -24,6 +27,7 @@ import dev.borja.nosqlbridge.common.target.TargetConnector;
 
 public class DynamoTargetConnector implements TargetConnector {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(DynamoTargetConnector.class);
     private final DynamoDbClient dynamoDbClient;
     private final DynamoLogicalValueConverter converter;
     private final String tableName;
@@ -152,10 +156,21 @@ public class DynamoTargetConnector implements TargetConnector {
             pending = response.unprocessedItems().getOrDefault(tableName, List.of());
             if (pending.isEmpty()) return;
             if (retries == batchWriteProperties.maxRetries()) {
+                if (MDC.get("workUnitId") != null) {
+                    MDC.put("failureReason", "unprocessed_items_retries_exhausted");
+                    MDC.put("retryCount", Integer.toString(retries));
+                    MDC.put("unprocessedItems", Integer.toString(pending.size()));
+                }
                 throw new IllegalStateException("DynamoDB batch write exhausted " + retries + " retries; "
                         + pending.size() + " unprocessed items remain for table " + tableName + ".");
             }
             try {
+                LOGGER.atWarn().addKeyValue("eventName", "DYNAMODB_BATCH_RETRY")
+                        .addKeyValue("operation", "batch_write").addKeyValue("retry", retries + 1)
+                        .addKeyValue("maxRetries", batchWriteProperties.maxRetries())
+                        .addKeyValue("unprocessedItems", pending.size()).addKeyValue("maxBackoffMs", backoffMillis)
+                        .log("DYNAMODB_BATCH_RETRY migrationId={} workUnitId={} retry={} unprocessedItems={} maxBackoffMs={}",
+                                MDC.get("migrationId"), MDC.get("workUnitId"), retries + 1, pending.size(), backoffMillis);
                 sleep(Duration.ofMillis(ThreadLocalRandom.current().nextLong(backoffMillis)));
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
