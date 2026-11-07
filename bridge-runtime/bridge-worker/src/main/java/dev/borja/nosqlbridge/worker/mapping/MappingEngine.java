@@ -3,6 +3,7 @@ package dev.borja.nosqlbridge.worker.mapping;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.MDC;
 
 import dev.borja.nosqlbridge.worker.model.LogicalPathResolver;
 import dev.borja.nosqlbridge.common.model.LogicalRecord;
@@ -37,6 +38,12 @@ public class MappingEngine {
             fields.putAll(source.fields());
         }
         for (MappingPlan mapping : mappings) {
+            boolean correlated = MDC.get("workUnitId") != null;
+            if (correlated) {
+                MDC.put("sourceField", mapping.source());
+                MDC.put("targetField", mapping.target());
+                MDC.put("transformation", mapping.transformation() == null ? "identity" : mapping.transformation());
+            }
             if ("preserve".equals(unmappedPolicy)) {
                 fields.remove(getTopLevelSourceField(mapping.source()));
             }
@@ -51,6 +58,11 @@ public class MappingEngine {
                         mapping.transformation(),
                         value);
                 fields.put(mapping.target(), transformedValue);
+            }
+            if (correlated) {
+                MDC.remove("sourceField");
+                MDC.remove("targetField");
+                MDC.remove("transformation");
             }
         }
         return new LogicalRecord(fields);

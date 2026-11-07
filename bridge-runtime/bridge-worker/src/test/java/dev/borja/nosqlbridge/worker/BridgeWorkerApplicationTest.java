@@ -99,7 +99,7 @@ class BridgeWorkerApplicationTest {
             verifyNoInteractions(mongoClient, dynamoDbClient);
             assertTrue(started.get().getBeansOfType(PlanRunner.class).isEmpty());
             assertEquals("worker", started.get().getEnvironment().getProperty("bridge.runtime.mode"));
-            assertEquals("bridge-runtime", started.get().getEnvironment().getProperty("spring.application.name"));
+            assertEquals("bridge-worker", started.get().getEnvironment().getProperty("spring.application.name"));
             assertEquals("mongodb://localhost:27019", started.get().getBean(MongoProperties.class).uri());
             assertEquals("eu-west-1", started.get().getBean(DynamoProperties.class).region());
             assertEquals("https://sqs.eu-west-1.amazonaws.com/123456789012/work",

@@ -1,3 +1,20 @@
 spring:
   application:
-    name: bridge-runtime
+    name: bridge-worker
+
+bridge:
+  worker:
+    backoff:
+      initial-delay: ${BRIDGE_WORKER_BACKOFF_INITIAL_DELAY:1s}
+      max-delay: ${BRIDGE_WORKER_BACKOFF_MAX_DELAY:30s}
+      jitter-ratio: ${BRIDGE_WORKER_BACKOFF_JITTER_RATIO:0.5}
+      stack-trace-interval: ${BRIDGE_WORKER_BACKOFF_STACK_TRACE_INTERVAL:1m}
+
+# Console only. Optional native JSON: LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs.
+# `ecs` means Elastic Common Schema; no CloudWatch SDK or file appender is needed.
+logging:
+  level:
+    root: ${BRIDGE_LOG_LEVEL:INFO}
+    org.mongodb.driver: ${BRIDGE_MONGODB_LOG_LEVEL:WARN}
+    # Detailed success events are opt-in in production and enabled by the E2E script.
+    dev.borja.nosqlbridge.worker.acknowledgement: ${BRIDGE_ACK_LOG_LEVEL:WARN}

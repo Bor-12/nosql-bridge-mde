@@ -75,8 +75,12 @@ public class BridgeWorkerApplication {
 					return 1;
 				}
 			}
-			error.println((workerMode ? "Failed to start worker" : "Failed to execute plan '" + planPath + "'") + ": "
-					+ (cause instanceof NoSuchFileException ? "Plan file does not exist." : cause.getMessage()));
+			String explanation = cause instanceof NoSuchFileException ? "Plan file does not exist."
+					: cause instanceof dev.borja.nosqlbridge.common.plan.UnsupportedPlanVersionException ? "Unsupported plan version."
+					: "Worker mode requires bridge.sqs.queue-url or a WorkQueue bean.".equals(cause.getMessage())
+							? "Worker mode requires bridge.sqs.queue-url or a WorkQueue bean."
+							: "Invalid infrastructure configuration or plan (" + cause.getClass().getSimpleName() + ").";
+			error.println((workerMode ? "Failed to start worker" : "Failed to execute plan '" + planPath + "'") + ": " + explanation);
 			return 1;
 		}
 	}
