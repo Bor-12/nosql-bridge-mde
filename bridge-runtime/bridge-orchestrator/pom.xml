@@ -9,6 +9,11 @@
     </parent>
     <artifactId>bridge-orchestrator</artifactId>
     <dependencies>
+        <!-- Already present at runtime through the connectors; required to compile SLF4J calls here. -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
         <dependency>
             <groupId>dev.borja.nosqlbridge</groupId>
             <artifactId>bridge-common</artifactId>

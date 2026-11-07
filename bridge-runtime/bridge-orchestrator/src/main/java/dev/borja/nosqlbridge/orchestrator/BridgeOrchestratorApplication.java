@@ -10,13 +10,17 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import dev.borja.nosqlbridge.common.plan.BridgeExecutionPlan;
 import dev.borja.nosqlbridge.common.plan.PlanLoader;
+import dev.borja.nosqlbridge.common.logging.SafeLogException;
 
 @SpringBootApplication
 public class BridgeOrchestratorApplication {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(BridgeOrchestratorApplication.class);
     public static void main(String[] args) {
         int exitCode = run(new SpringApplication(BridgeOrchestratorApplication.class), System.out, System.err, args);
         if (exitCode != 0) {
@@ -47,21 +51,40 @@ public class BridgeOrchestratorApplication {
 
         application.setWebApplicationType(WebApplicationType.NONE);
         MigrationPublisher.Result result;
+        long started = System.nanoTime();
+        String phase = "initialization";
         try (ConfigurableApplicationContext context = application.run(
                 "--spring.config.location=optional:classpath:/application.yaml," + configPath.toUri())) {
+            LOGGER.atInfo().addKeyValue("eventName", "ORCHESTRATOR_STARTED")
+                    .log("ORCHESTRATOR_STARTED");
+            phase = "plan_load";
             BridgeExecutionPlan plan = context.getBean(PlanLoader.class).load(planPath);
+            phase = "plan_validate_or_publish";
             result = context.getBean(MigrationPublisher.class).publish(plan);
+            phase = "context_close";
         } catch (MigrationPublisher.PublicationException failure) {
             error.println(failure.getMessage());
             return 1;
         } catch (IllegalArgumentException failure) {
-            error.println("Invalid execution plan: " + failure.getMessage());
+            LOGGER.atError().addKeyValue("eventName", "ORCHESTRATOR_FAILED").addKeyValue("phase", phase)
+                    .addKeyValue("errorType", failure.getClass().getName()).setCause(SafeLogException.snapshot(failure))
+                    .log("ORCHESTRATOR_FAILED phase={} errorType={}", phase, failure.getClass().getName());
+            error.println("Invalid execution plan (" + failure.getClass().getSimpleName() + "). Check the plan and configuration.");
             return 1;
         } catch (Exception failure) {
+            LOGGER.atError().addKeyValue("eventName", "ORCHESTRATOR_FAILED").addKeyValue("phase", phase)
+                    .addKeyValue("errorType", failure.getClass().getName()).setCause(SafeLogException.snapshot(failure))
+                    .log("ORCHESTRATOR_FAILED phase={} errorType={}", phase, failure.getClass().getName());
             error.println("Could not prepare or finish migration (" + failure.getClass().getSimpleName()
                     + "). Check the plan and orchestrator configuration.");
             return 1;
         }
+        LOGGER.atInfo().addKeyValue("eventName", "ORCHESTRATOR_COMPLETED")
+                .addKeyValue("migrationId", result.migrationId().value().toString())
+                .addKeyValue("publishedWorkUnits", result.publishedMessages())
+                .addKeyValue("durationMs", (System.nanoTime() - started) / 1_000_000)
+                .log("ORCHESTRATOR_COMPLETED migrationId={} publishedWorkUnits={}; this does not imply consumer completion.",
+                        result.migrationId().value(), result.publishedMessages());
         output.println("Migration " + result.migrationId().value() + ": " + result.publishedMessages()
                 + " publish calls completed successfully.");
         return 0;

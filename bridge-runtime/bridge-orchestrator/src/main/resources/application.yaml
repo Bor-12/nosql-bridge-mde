@@ -1,3 +1,9 @@
 spring:
   application:
     name: bridge-orchestrator
+
+# Console only. Optional native JSON: LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs.
+logging:
+  level:
+    root: ${BRIDGE_LOG_LEVEL:INFO}
+    org.mongodb.driver: ${BRIDGE_MONGODB_LOG_LEVEL:WARN}
