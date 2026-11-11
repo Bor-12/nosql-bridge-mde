@@ -1,3 +1,6 @@
+# Configuración Spring interna para los servicios worker/orchestrator de Compose
+# y las pruebas de imágenes Java. No usar con brg --config: la CLI utiliza
+# bridge.local.yaml o bridge.aws.yaml.
 spring:
   main:
     web-application-type: none

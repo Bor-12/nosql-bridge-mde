@@ -1,0 +1,22 @@
+# Para la CLI brg. Servicios locales publicados en Windows/Linux/macOS.
+# Levantar Compose con ELASTICMQ_HOST_PORT=9325 (ver ../README.md).
+# Exportar AWS_ACCESS_KEY_ID=dummy y AWS_SECRET_ACCESS_KEY=dummy.
+connections:
+  mongodb:
+    uri: "mongodb://host.docker.internal:27017"
+  dynamodb:
+    endpoint: "http://host.docker.internal:8000"
+    region: "us-east-1"
+  sqs:
+    endpoint: "http://host.docker.internal:9325"
+    queueUrl: "http://host.docker.internal:9325/000000000000/migration-work"
+    region: "us-east-1"
+
+execution:
+  provider: docker
+  timeoutSeconds: 600
+  recordsPerPartition: 1000
+  batchSize: 25
+  visibilityTimeoutSeconds: 120
+  workers:
+    count: 3

@@ -1,0 +1,23 @@
+bridge ProductMigration {
+    source MongoDB {
+        database "shop"
+        collection "products"
+    }
+
+    target DynamoDB {
+        table "Products"
+        partitionKey "id"
+    }
+
+    sourceTypes {
+        price string
+        stock string
+    }
+
+    mapping {
+        _id -> id
+        name -> name
+        price -> price using toDecimal
+        stock -> stock using toInteger
+    }
+}

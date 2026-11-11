@@ -1,0 +1,19 @@
+# Para la CLI brg: contenedores locales y servicios de datos remotos.
+# No despliega el runtime en AWS. Las credenciales se proporcionan externamente.
+connections:
+  mongodb:
+    uri: "${MONGO_URI}"
+  dynamodb:
+    region: "${AWS_REGION}"
+  sqs:
+    queueUrl: "${SQS_QUEUE_URL}"
+    region: "${AWS_REGION}"
+
+execution:
+  provider: docker
+  timeoutSeconds: 600
+  recordsPerPartition: 1000
+  batchSize: 25
+  visibilityTimeoutSeconds: 120
+  workers:
+    count: 3
