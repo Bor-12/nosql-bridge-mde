@@ -66,10 +66,12 @@ function bridge(mapping: string, options: {
     sourceTypes?: string;
     nulls?: string;
 } = {}): string {
+    const sourceConfig = options.source === 'StringOnlyStore' ? '' : 'database "shop" collection "products"';
+    const targetConfig = options.target === 'StringOnlyStore' ? '' : 'database "target" collection "products"';
     return `
         bridge DefaultValidationBridge {
-            source ${options.source ?? 'MongoDB'} { database "shop" collection "products" }
-            target ${options.target ?? 'MongoDB'} { database "target" collection "products" }
+            source ${options.source ?? 'MongoDB'} { ${sourceConfig} }
+            target ${options.target ?? 'MongoDB'} { ${targetConfig} }
             ${options.sourceTypes ? `sourceTypes { ${options.sourceTypes} }` : ''}
             ${options.nulls ?? ''}
             mapping { ${mapping} }

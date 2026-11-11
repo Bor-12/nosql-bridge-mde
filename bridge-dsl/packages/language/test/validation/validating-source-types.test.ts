@@ -31,9 +31,11 @@ const validate = validationHelper<BridgeModel>(services.Bridge);
 afterEach(async () => { await clearDocuments(services.shared); });
 
 function bridge(types: string, mappings = 'value -> amount', source = 'MongoDB', target = 'DynamoDB'): string {
+    const sourceConfig = source === 'DynamoDB' ? 'table "Products"' : 'database "shop" collection "products"';
+    const targetConfig = target === 'MongoDB' ? 'database "shop" collection "products"' : 'table "Products" partitionKey "id"';
     return `bridge Types {
-        source ${source} { database "shop" collection "products" table "Products" }
-        target ${target} { database "shop" collection "products" table "Products" partitionKey "id" }
+        source ${source} { ${sourceConfig} }
+        target ${target} { ${targetConfig} }
         ${types ? `sourceTypes { ${types} }` : ''}
         mapping { _id -> id ${mappings} }
     }`;

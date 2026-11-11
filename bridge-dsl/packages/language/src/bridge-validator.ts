@@ -205,6 +205,15 @@ export class BridgeValidator {
         }
 
         const role = connector.$type === 'Source' ? 'source' : 'target';
+        const allowedProperties = new Set(descriptor[role].properties.map(property => property.name));
+        for (const property of connector.properties) {
+            if (!allowedProperties.has(property.name)) {
+                accept('error', `Unknown property '${property.name}' for ${connector.technology} ${role}.`, {
+                    node: property,
+                    property: 'name'
+                });
+            }
+        }
         const presentProperties = new Set(connector.properties.map(property => property.name));
         for (const property of descriptor[role].properties) {
             if (property.required && !presentProperties.has(property.name)) {

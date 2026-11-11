@@ -162,15 +162,8 @@ describe('Bridge DSL semantic validation', () => {
             duplicateIndexes: [2, 3]
         },
         {
-            name: 'accepts distinct extra properties within each connector',
-            source: 'source MongoDB { database "shop" collection "products" customOption "x" }',
-            target: 'target DynamoDB { table "Products" partitionKey "id" customOption "x" }',
-            role: 'source',
-            duplicateIndexes: []
-        },
-        {
-            name: 'treats property names as case-sensitive',
-            source: 'source MongoDB { database "shop" collection "products" Collection "other" }',
+            name: 'accepts distinct declared properties within each connector',
+            source: 'source MongoDB { database "shop" collection "products" }',
             target: 'target DynamoDB { table "Products" partitionKey "id" }',
             role: 'source',
             duplicateIndexes: []
@@ -364,7 +357,7 @@ describe('Bridge DSL semantic validation', () => {
         expect(result.diagnostics).toEqual([]);
     });
 
-    it('accepts extra properties for registered connectors', async () => {
+    it('rejects undeclared properties for registered connectors', async () => {
         const result = await validate(`
             bridge ExtraPropertyBridge {
                 source MongoDB { database "shop" collection "products" customOption "x" }
@@ -375,10 +368,13 @@ describe('Bridge DSL semantic validation', () => {
 
         expect(result.document.parseResult.lexerErrors).toHaveLength(0);
         expect(result.document.parseResult.parserErrors).toHaveLength(0);
-        expect(result.diagnostics).toEqual([]);
+        expect(result.diagnostics).toEqual([
+            expect.objectContaining({ message: "Unknown property 'customOption' for MongoDB source.", severity: DiagnosticSeverity.Error }),
+            expect.objectContaining({ message: "Unknown property 'customOption' for DynamoDB target.", severity: DiagnosticSeverity.Error })
+        ]);
     });
 
-    it.each(['source', 'target'] as const)('accepts a dynamic technology property in %s', async connector => {
+    it.each(['source', 'target'] as const)('rejects a technology property inside the %s configuration', async connector => {
         const result = await validate(`
             bridge DynamicPropertyBridge {
                 source MongoDB {
@@ -397,7 +393,44 @@ describe('Bridge DSL semantic validation', () => {
 
         expect(result.document.parseResult.lexerErrors).toHaveLength(0);
         expect(result.document.parseResult.parserErrors).toHaveLength(0);
-        expect(result.diagnostics).toEqual([]);
+        expect(result.diagnostics).toEqual([
+            expect.objectContaining({
+                message: `Unknown property 'technology' for ${connector === 'source' ? 'MongoDB source' : 'DynamoDB target'}.`,
+                severity: DiagnosticSeverity.Error
+            })
+        ]);
+    });
+
+    it.each([
+        ['MongoDB', 'source', 'uri'],
+        ['MongoDB', 'target', 'password'],
+        ['DynamoDB', 'source', 'region'],
+        ['DynamoDB', 'target', 'endpoint'],
+        ['MongoDB', 'source', 'futureOperationalSetting'],
+        ['MongoDB', 'source', 'Collection'],
+        ['MongoDB', 'source', 'table'],
+        ['DynamoDB', 'source', 'partitionKey']
+    ] as const)('rejects undeclared %s %s property %s at its name', async (technology, role, property) => {
+        const config = technology === 'MongoDB' ? 'database "shop" collection "products"' : 'table "Products"';
+        const selected = `${role} ${technology} { ${config} ${role === 'target' && technology === 'DynamoDB' ? 'partitionKey "id"' : ''} ${property} "example-value" }`;
+        const result = await validate(`
+            bridge PropertyBridge {
+                ${role === 'source' ? selected : 'source MongoDB { database "shop" collection "products" }'}
+                ${role === 'target' ? selected : 'target DynamoDB { table "Products" partitionKey "id" }'}
+                mapping { _id -> id name -> name }
+            }
+        `);
+        expect(result.document.parseResult.parserErrors).toHaveLength(0);
+        const node = result.document.parseResult.value[role].properties.at(-1)!;
+        const offset = node.$cstNode!.offset;
+        expect(result.diagnostics).toEqual([expect.objectContaining({
+            message: `Unknown property '${property}' for ${technology} ${role}.`,
+            severity: DiagnosticSeverity.Error,
+            range: {
+                start: result.document.textDocument.positionAt(offset),
+                end: result.document.textDocument.positionAt(offset + property.length)
+            }
+        })]);
     });
 
     it('reports an error when a bridge with unmapped drop has no mappings', async () => {
