@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# E2E con las imágenes :ci construidas desde el código actual, nunca desde GHCR.
 set -euo pipefail
 
 workers=3
-# Referencias locales del E2E. No forman parte de la configuración de producción.
 worker_image=bridge-worker:ci
 orchestrator_image=bridge-orchestrator:ci
 check_failure=false
@@ -41,13 +39,10 @@ umask 077
 project="brg-e2e-$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
 directory="$repository/scripts/test-results/$project"
 mkdir -p "$directory/home"
-# HOME se aísla para que el estado de brg no se mezcle con ejecuciones del usuario.
-# Docker conserva su configuración original, incluso cuando se cambia HOME.
 export DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}"
 export AWS_ACCESS_KEY_ID=dummy AWS_SECRET_ACCESS_KEY=dummy AWS_EC2_METADATA_DISABLED=true
 unset AWS_SESSION_TOKEN AWS_PROFILE
 
-# Reutilizar los servicios de Compose, quitando puertos fijos y volúmenes de desarrollo.
 cat >"$directory/compose.override.yaml" <<'COMPOSE'
 services:
   mongodb:
@@ -56,6 +51,7 @@ services:
   dynamodb-local:
     ports: !override ["0:8000"]
     volumes: !override []
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
   elasticmq:
     ports: !override ["0:9324"]
 volumes: !reset {}
@@ -66,10 +62,8 @@ compose() {
         -f "$repository/docker-compose.yaml" -f "$directory/compose.override.yaml" "$@"
 }
 
-# Solo brg recibe el perfil de prueba. AWS CLI sigue usando las credenciales dummy.
 brg() (
     export HOME="$directory/home"
-    # Inyección interna de las dos imágenes; nunca hay fallback a GHCR.
     export BRG_TEST_WORKER_IMAGE="$worker_image"
     export BRG_TEST_ORCHESTRATOR_IMAGE="$orchestrator_image"
     if [[ $use_profile == true ]]; then
@@ -92,10 +86,11 @@ cleanup() {
         id=$(jq -er '.id' "$manifest") || { failed=true; continue; }
         brg cleanup "$id" >>"$directory/cleanup.log" 2>&1 || failed=true
     done
-    # El nombre de proyecto es exclusivo y el override no usa volúmenes externos.
     compose down --volumes --remove-orphans >"$directory/compose-cleanup.log" 2>&1 || failed=true
     if [[ $status == 0 && $failed == true ]]; then status=1; fi
     if [[ $status != 0 ]]; then
+        echo 'ERROR: logs de los servicios de prueba:' >&2
+        tail -n 100 "$directory/services.log" >&2
         echo 'ERROR: E2E fallido. Diagnósticos de limpieza:' >&2
         cat "$directory/compose-cleanup.log" >&2
         for log in "$directory/runtime-logs"/brg-*/*.log; do
@@ -123,9 +118,11 @@ local_aws() {
 }
 
 wait_until_ready() {
+    local service=$1
+    shift
     local deadline=$((SECONDS + 90))
     until "$@" >"$directory/readiness.log" 2>&1; do
-        if ((SECONDS >= deadline)); then cat "$directory/readiness.log" >&2; die 'Servicio no disponible'; fi
+        if ((SECONDS >= deadline)); then cat "$directory/readiness.log" >&2; die "Servicio no disponible: $service"; fi
         sleep 2
     done
 }
@@ -139,7 +136,6 @@ host_port() {
 
 echo '1. Preparar emuladores aislados'
 compose config --format json >"$directory/compose.json"
-# Evitar que una futura modificación de Compose conecte el test a datos externos.
 jq -e '(.volumes // {} | length) == 0 and
     ([.services.mongodb.volumes[]?, .services["dynamodb-local"].volumes[]?] | length) == 0' \
     "$directory/compose.json" >/dev/null || die 'El test no debe montar volúmenes de desarrollo'
@@ -151,9 +147,9 @@ dynamo_port=$(host_port dynamodb-local 8000/tcp)
 sqs_port=$(host_port elasticmq 9324/tcp)
 dynamo_endpoint="http://localhost:$dynamo_port"
 sqs_endpoint="http://localhost:$sqs_port"
-wait_until_ready compose exec -T mongodb mongosh --quiet --eval 'if (db.adminCommand({ping:1}).ok !== 1) quit(1)'
-wait_until_ready local_aws "$dynamo_endpoint" dynamodb list-tables
-wait_until_ready local_aws "$sqs_endpoint" sqs list-queues
+wait_until_ready MongoDB compose exec -T mongodb mongosh --quiet --eval 'if (db.adminCommand({ping:1}).ok !== 1) quit(1)'
+wait_until_ready 'DynamoDB Local' local_aws "$dynamo_endpoint" dynamodb list-tables
+wait_until_ready ElasticMQ local_aws "$sqs_endpoint" sqs list-queues
 
 echo '2. Preparar 105 documentos, una tabla vacía y la cola'
 local_aws "$dynamo_endpoint" dynamodb create-table --table-name BridgeCliTest \
@@ -220,8 +216,6 @@ brg run "$directory/migration.brg" --config "$directory/bridge.yaml" \
     --logs-dir "$directory/runtime-logs" 2>&1 | tee "$directory/cli.log"
 local_aws "$dynamo_endpoint" dynamodb scan --table-name BridgeCliTest --consistent-read >"$directory/destination.json"
 
-# Node ya es necesario para la CLI. Sus assertions permiten leer los JSON y los
-# eventos sin una cadena complicada de expresiones Bash/jq.
 node - "$directory" "$workers" <<'JS' | tee "$directory/evidence.json"
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -304,7 +298,6 @@ for manifest in "$directory/home/.brg/runs"/brg-*/run.json; do
     remaining=$(docker ps -a --filter "label=dev.nosqlbridge.run=$id" --format '{{.Names}}')
     [[ -z $remaining ]] || die "Contenedores residuales de $id: $remaining"
 done
-# La CLI no debe haber borrado ni los servicios ni los datos de la prueba.
 for service in mongodb dynamodb-local elasticmq; do
     container=$(compose ps -q "$service")
     [[ -n $container ]] || die "La CLI ha eliminado el servicio $service"
