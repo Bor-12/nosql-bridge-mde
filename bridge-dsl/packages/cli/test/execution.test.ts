@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
@@ -26,13 +26,18 @@ const migrationId = '550e8400-e29b-41d4-a716-446655440000';
 const injectedImages = { worker: 'e2e-worker:candidate', orchestrator: 'e2e-orchestrator:candidate' };
 const event = (type: RuntimeEvent['type'], fields = {}): RuntimeEvent => ({ eventVersion: 1, type, migrationId, ...fields });
 let directory: string;
+let planDirectory: string;
+let planFile: string;
 beforeEach(async () => {
     directory = await mkdtemp(path.join(tmpdir(), 'brg-execution-'));
+    planDirectory = await mkdtemp(path.join(tmpdir(), 'brg-plan-'));
+    planFile = path.join(planDirectory, 'model with spaces.plan.json');
+    await writeFile(planFile, '{"planVersion":1}', { mode: 0o600 });
     vi.stubEnv('AWS_PROFILE', undefined);
     vi.stubEnv('BRG_TEST_WORKER_IMAGE', undefined);
     vi.stubEnv('BRG_TEST_ORCHESTRATOR_IMAGE', undefined);
 });
-afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); await rm(directory, { recursive: true, force: true }); });
+afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); await rm(directory, { recursive: true, force: true }); await rm(planDirectory, { recursive: true, force: true }); });
 
 describe('external configuration', () => {
     it('uses AWS region resolution without endpoint overrides while execution remains Docker', () => {
@@ -260,7 +265,7 @@ describe('Docker execution ownership and lifecycle', () => {
         vi.stubEnv('BRG_TEST_WORKER_IMAGE', 'ignored-worker:unused');
         vi.stubEnv('BRG_TEST_ORCHESTRATOR_IMAGE', 'ignored-orchestrator:unused');
         const docker = new FakeDocker();
-        await runDocker('plan.json', parseRunConfig(yaml, env), { docker, runsRoot: directory, images: injectedImages, tickMs: 1 });
+        await runDocker(planFile, parseRunConfig(yaml, env), { docker, runsRoot: directory, images: injectedImages, tickMs: 1 });
         expect(docker.calls.filter(call => call[0] === 'image')).toEqual([
             ['image', 'inspect', injectedImages.orchestrator], ['image', 'inspect', injectedImages.worker]
         ]);
@@ -272,7 +277,7 @@ describe('Docker execution ownership and lifecycle', () => {
     it.each([injectedImages.orchestrator, injectedImages.worker])('does not pull or start containers if an injected image is missing: %s', async image => {
         const docker = new FakeDocker();
         docker.missingImages.add(image);
-        await expect(runDocker('plan.json', parseRunConfig(yaml, env), { docker, runsRoot: directory, images: injectedImages }))
+        await expect(runDocker(planFile, parseRunConfig(yaml, env), { docker, runsRoot: directory, images: injectedImages }))
             .rejects.toThrow(`Injected runtime image ${image} is missing locally.`);
         expect(docker.calls.some(call => ['pull', 'run'].includes(call[0]))).toBe(false);
     });
@@ -287,7 +292,7 @@ describe('Docker execution ownership and lifecycle', () => {
         vi.stubEnv('BRG_TEST_ORCHESTRATOR_IMAGE', injectedImages.orchestrator);
         const docker = new FakeDocker();
         docker.missingImages = new Set(missing);
-        await runDocker('plan.json', parseRunConfig(yaml, env), { docker, runsRoot: directory, tickMs: 1 });
+        await runDocker(planFile, parseRunConfig(yaml, env), { docker, runsRoot: directory, tickMs: 1 });
         expect(docker.calls.filter(call => call[0] === 'image')).toEqual([
             ['image', 'inspect', runtimeImages.orchestrator], ['image', 'inspect', runtimeImages.worker]
         ]);
@@ -304,7 +309,7 @@ describe('Docker execution ownership and lifecycle', () => {
         const docker = new FakeDocker();
         docker.missingImages.add(image);
         docker.pullFailure = new Error('Registry connection unavailable');
-        await expect(runDocker('plan.json', parseRunConfig(yaml, env), { docker, runsRoot: directory }))
+        await expect(runDocker(planFile, parseRunConfig(yaml, env), { docker, runsRoot: directory }))
             .rejects.toThrow(`Cannot download official runtime image ${image}. Registry connection unavailable`);
         expect(docker.calls.some(call => call[0] === 'run')).toBe(false);
         expect(docker.logDestinations).toEqual([]);
@@ -324,7 +329,7 @@ describe('Docker execution ownership and lifecycle', () => {
             }
             return command(args);
         });
-        const run = runDocker('plan.json', parseRunConfig(yaml, env), { docker, runsRoot: directory, tickMs: 1 });
+        const run = runDocker(planFile, parseRunConfig(yaml, env), { docker, runsRoot: directory, tickMs: 1 });
         try {
             await downloading;
             expect(docker.calls.some(call => call[0] === 'run')).toBe(false);
@@ -335,15 +340,39 @@ describe('Docker execution ownership and lifecycle', () => {
     it.each(['Docker executable not found.', 'Docker daemon is unavailable.'])('reports Docker unavailability before downloading or starting: %s', async cause => {
         const docker = new FakeDocker();
         docker.infoFailure = new Error(cause);
-        await expect(runDocker('plan.json', parseRunConfig(yaml, env), { docker, runsRoot: directory }))
+        await expect(runDocker(planFile, parseRunConfig(yaml, env), { docker, runsRoot: directory }))
             .rejects.toThrow(`Docker is not available. Check that Docker is installed, running and accessible. ${cause}`);
         expect(docker.calls.some(call => ['run', 'pull', 'image'].includes(call[0]))).toBe(false);
+    });
+    it('mounts a readable private copy of the plan without changing the original permissions', async () => {
+        const docker = new FakeDocker();
+        const command = docker.command.bind(docker);
+        let stagedPlan: string | undefined;
+        vi.spyOn(docker, 'command').mockImplementation(async args => {
+            if (args[0] === 'run' && args.includes('--plan')) {
+                const mount = args.find(value => value.includes('target=/run/bridge/plan.json,'))!;
+                expect(mount).toContain(',readonly');
+                stagedPlan = mount.slice('type=bind,source='.length, mount.indexOf(',target='));
+                expect(stagedPlan).not.toBe(planFile);
+                expect(await readFile(stagedPlan, 'utf8')).toBe(await readFile(planFile, 'utf8'));
+                if (process.platform !== 'win32') {
+                    expect((await stat(stagedPlan)).mode & 0o777).toBe(0o444);
+                    expect((await stat(path.dirname(stagedPlan))).mode & 0o777).toBe(0o700);
+                }
+            }
+            return command(args);
+        });
+        const originalMode = (await stat(planFile)).mode;
+        await runDocker(planFile, parseRunConfig(yaml, env), { docker, runsRoot: directory, tickMs: 1 });
+        expect(stagedPlan).toBeDefined();
+        expect((await stat(planFile)).mode).toBe(originalMode);
+        await expect(stat(stagedPlan!)).rejects.toMatchObject({ code: 'ENOENT' });
     });
     it.each([1, 2, 4])('runs %s managed workers against the configured existing services', async count => {
         const docker = new FakeDocker();
         const config = parseRunConfig(yaml, env);
         config.workers.count = count;
-        await runDocker(path.join(directory, 'model with spaces.plan.json'), config, { docker, runsRoot: directory, tickMs: 1 });
+        await runDocker(planFile, config, { docker, runsRoot: directory, tickMs: 1 });
         const runs = docker.calls.filter(call => call[0] === 'run');
         expect(runs).toHaveLength(count + 1);
         expect(docker.configurations).toHaveLength(count + 1);
@@ -368,7 +397,7 @@ describe('Docker execution ownership and lifecycle', () => {
         const logsDir = kind === 'relative' ? './new/custom logs' : logsRoot;
         const log = vi.spyOn(console, 'log').mockImplementation(() => {});
         const docker = new FakeDocker();
-        await runDocker('plan.json', parseRunConfig(yaml, env), { docker, runsRoot, logsDir, tickMs: 1 });
+        await runDocker(planFile, parseRunConfig(yaml, env), { docker, runsRoot, logsDir, tickMs: 1 });
         const [id] = await readdir(runsRoot);
         const logsDirectory = path.join(logsRoot, id);
         expect(JSON.parse(await readFile(path.join(runsRoot, id, 'run.json'), 'utf8'))).toMatchObject({ state: 'COMPLETED', logsDirectory });
@@ -385,10 +414,10 @@ describe('Docker execution ownership and lifecycle', () => {
         const logsDir = path.join(directory, 'logs');
         const config = parseRunConfig(yaml, env);
         const first = new FakeDocker();
-        await runDocker('plan.json', config, { docker: first, runsRoot, logsDir, tickMs: 1 });
+        await runDocker(planFile, config, { docker: first, runsRoot, logsDir, tickMs: 1 });
         const original = await Promise.all(first.logDestinations.map(file => readFile(file, 'utf8')));
         const second = new FakeDocker(); second.scenario = 'failed';
-        await expect(runDocker('plan.json', config, { docker: second, runsRoot, logsDir, tickMs: 1 })).rejects.toThrow('definitive failure');
+        await expect(runDocker(planFile, config, { docker: second, runsRoot, logsDir, tickMs: 1 })).rejects.toThrow('definitive failure');
         expect(await readdir(logsDir)).toHaveLength(2);
         expect(await Promise.all(first.logDestinations.map(file => readFile(file, 'utf8')))).toEqual(original);
         const failedId = path.basename(path.dirname(second.logDestinations[0]));
@@ -402,7 +431,7 @@ describe('Docker execution ownership and lifecycle', () => {
         await writeFile(logsDir, 'keep this file');
         const docker = new FakeDocker();
         const runsRoot = path.join(directory, 'runs');
-        await expect(runDocker('plan.json', parseRunConfig(yaml, env), { docker, runsRoot, logsDir }))
+        await expect(runDocker(planFile, parseRunConfig(yaml, env), { docker, runsRoot, logsDir }))
             .rejects.toThrow(/Cannot prepare runtime logs directory .*Check the path and write permissions/);
         expect(docker.calls.some(call => call[0] === 'run')).toBe(false);
         expect(docker.logDestinations).toEqual([]);
@@ -448,17 +477,17 @@ describe('Docker execution ownership and lifecycle', () => {
     });
     it.each(['failed', 'crashed'] as const)('propagates %s runtime errors and cleans only owned containers', async scenario => {
         const docker = new FakeDocker(); docker.scenario = scenario;
-        await expect(runDocker('plan.json', parseRunConfig(yaml, env), { docker, runsRoot: directory, tickMs: 1 })).rejects.toThrow();
+        await expect(runDocker(planFile, parseRunConfig(yaml, env), { docker, runsRoot: directory, tickMs: 1 })).rejects.toThrow();
         expect(docker.calls.some(call => call[0] === 'rm')).toBe(true);
     });
     it('times out rather than treating a published migration as completed', async () => {
         const docker = new FakeDocker(); docker.scenario = 'missing';
         const config = parseRunConfig(yaml, env); config.timeoutSeconds = 0.05;
-        await expect(runDocker('plan.json', config, { docker, runsRoot: directory, tickMs: 1 })).rejects.toThrow('timed out');
+        await expect(runDocker(planFile, config, { docker, runsRoot: directory, tickMs: 1 })).rejects.toThrow('timed out');
     });
     it('rejects cancellation and unsafe cleanup identifiers', async () => {
         const controller = new AbortController(); controller.abort();
-        await expect(runDocker('plan.json', parseRunConfig(yaml, env), { docker: new FakeDocker(), runsRoot: directory, signal: controller.signal })).rejects.toThrow('cancelled');
+        await expect(runDocker(planFile, parseRunConfig(yaml, env), { docker: new FakeDocker(), runsRoot: directory, signal: controller.signal })).rejects.toThrow('cancelled');
         await expect(cleanupRun('../other', directory, new FakeDocker())).rejects.toThrow('Invalid execution');
     });
     it('validates configuration before generating a plan or invoking Docker', async () => {

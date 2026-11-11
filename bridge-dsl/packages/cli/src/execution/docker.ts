@@ -141,7 +141,7 @@ export async function runDocker(plan: string, config: RunConfig, options: {
             '--mount', `type=bind,source=${path.join(temporary!, 'runtime.yaml')},target=/run/bridge/config.yaml,readonly`];
         if (config.network) args.push('--network', config.network);
         for (const mount of credentialMounts) args.push('--mount', `type=bind,source=${mount.source},target=${mount.target},readonly`);
-        if (role === 'orchestrator') args.push('--mount', `type=bind,source=${path.resolve(plan)},target=/run/bridge/plan.json,readonly`);
+        if (role === 'orchestrator') args.push('--mount', `type=bind,source=${path.join(temporary!, 'plan.json')},target=/run/bridge/plan.json,readonly`);
         args.push(image, '--config', '/run/bridge/config.yaml');
         if (role === 'orchestrator') args.push('--plan', '/run/bridge/plan.json');
         await docker.command(args, options.signal);
@@ -195,6 +195,8 @@ export async function runDocker(plan: string, config: RunConfig, options: {
         // The private parent directory protects host access; the bind-mounted file
         // must also be readable by the image's non-root UID inside the container.
         await chmod(path.join(temporary, 'runtime.yaml'), 0o444);
+        await writeFile(path.join(temporary, 'plan.json'), await readFile(plan), { mode: 0o600 });
+        await chmod(path.join(temporary, 'plan.json'), 0o444);
         const { environment, mounts } = await prepareAwsCredentials(temporary);
         credentialMounts = mounts;
         await writeFile(path.join(temporary, 'runtime.env'), Object.entries(environment).map(([key, value]) => `${key}=${value}`).join('\n') + '\n', { mode: 0o600 });
@@ -266,7 +268,7 @@ export async function runDocker(plan: string, config: RunConfig, options: {
         }
         if (temporary) {
             try {
-                for (const file of ['runtime.yaml', 'aws-config', 'aws-credentials']) await chmod(path.join(temporary, file), 0o600).catch(() => {});
+                for (const file of ['runtime.yaml', 'plan.json', 'aws-config', 'aws-credentials']) await chmod(path.join(temporary, file), 0o600).catch(() => {});
                 await rm(temporary, { recursive: true, force: true });
                 delete manifest.temporary;
             } catch { cleanupFailed = true; }
@@ -298,7 +300,7 @@ export async function cleanupRun(id: string, runsRoot = path.join(homedir(), '.b
     if (manifest.temporary) {
         const temporary = path.resolve(manifest.temporary);
         if (path.dirname(temporary) !== path.resolve(tmpdir()) || !path.basename(temporary).startsWith('brg-run-')) throw new Error('Invalid temporary directory; not removed.');
-        for (const file of ['runtime.yaml', 'aws-config', 'aws-credentials']) await chmod(path.join(temporary, file), 0o600).catch(() => {});
+        for (const file of ['runtime.yaml', 'plan.json', 'aws-config', 'aws-credentials']) await chmod(path.join(temporary, file), 0o600).catch(() => {});
         await rm(temporary, { recursive: true, force: true });
         delete manifest.temporary;
         await writeFile(path.join(runsRoot, id, 'run.json'), JSON.stringify(manifest, null, 2) + '\n', { mode: 0o600 });
