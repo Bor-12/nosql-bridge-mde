@@ -38,6 +38,8 @@ jobs:
 
       - name: Test workspaces
         run: npm test
+      - name: Verify npm package in isolation
+        run: npm run test:package --workspace packages/cli
 
   runtime:
     name: Java runtime
@@ -62,7 +64,7 @@ jobs:
 
   docker:
     name: Docker images
-    needs: runtime
+    needs: [runtime, dsl]
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -76,3 +78,32 @@ jobs:
         run: docker build --file bridge-worker/Dockerfile --tag bridge-worker:ci .
       - name: Build orchestrator image
         run: docker build --file bridge-orchestrator/Dockerfile --tag bridge-orchestrator:ci .
+      - name: Set up Node.js for distributed CLI test
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: bridge-dsl/package-lock.json
+      - name: Build CLI
+        working-directory: bridge-dsl
+        run: |
+          npm ci
+          npm run langium:generate
+          npm run build
+      - name: Test distributed migration through CLI
+        working-directory: .
+        shell: bash
+        run: bash ./scripts/test-cli.sh --workers 2 --check-failure
+      - name: Test separate networks and shared AWS profile
+        working-directory: .
+        shell: bash
+        run: bash ./scripts/test-cli.sh --workers 1 --via-host --use-profile
+      - name: Preserve E2E diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cli-e2e-diagnostics
+          path: scripts/test-results/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7

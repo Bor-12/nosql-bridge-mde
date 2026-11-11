@@ -20,3 +20,7 @@ target
 .env.*
 
 /TFG_CONTEXT.md
+
+/scripts/*
+!/scripts/test-cli.sh
+/scripts/test-results/
