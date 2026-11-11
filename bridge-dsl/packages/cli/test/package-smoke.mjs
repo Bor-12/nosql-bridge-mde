@@ -4,6 +4,7 @@ import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runtimeImages } from '../out/execution/images.js';
 
 const cliRoot = fileURLToPath(new URL('../', import.meta.url));
 const directory = mkdtempSync(path.join(tmpdir(), 'brg package smoke '));
@@ -26,12 +27,18 @@ try {
     const installed = path.join(prefix, process.platform === 'win32' ? '' : 'lib', 'node_modules', packageName);
     const metadata = JSON.parse(readFileSync(path.join(installed, 'package.json'), 'utf8'));
     assert.deepEqual(metadata.dependencies, {});
+    const bundle = readFileSync(path.join(installed, 'dist', 'cli.js'), 'utf8');
+    for (const role of ['orchestrator', 'worker']) {
+        assert.match(runtimeImages[role], new RegExp(`^ghcr\\.io/bor-12/nosql-bridge-${role}@sha256:[a-f0-9]{64}$`));
+        assert.ok(bundle.includes(runtimeImages[role]), `Packed CLI must contain the pinned official ${role} image`);
+    }
     const consumer = path.join(directory, 'independent consumer');
     mkdirSync(consumer);
     copyFileSync(fileURLToPath(new URL('../../../test-inputs/minimal.brg', import.meta.url)), path.join(consumer, 'migration.brg'));
     const env = { ...process.env, PATH: '', BRG_RUNTIME_JAR: '', HOME: directory, USERPROFILE: directory, NO_COLOR: '1' };
     const invoke = (...args) => execute(process.execPath, [path.join(installed, 'bin', 'cli.js'), ...args], consumer, env);
-    assert.match(invoke('--help'), /runtime/);
+    assert.match(invoke('--help'), /cleanup/);
+    assert.match(invoke('run', '--help'), /--logs-dir <directory>/);
     assert.equal(invoke('--version').trim(), metadata.version);
     assert.match(invoke('validate', 'migration.brg'), /Model is valid/);
     assert.match(invoke('compile', 'migration.brg'), /Compiled execution plan/);
@@ -43,7 +50,7 @@ try {
     } else {
         assert.equal(execute(path.join(prefix, 'bin', 'brg'), ['--version'], consumer).trim(), metadata.version);
     }
-    console.log(JSON.stringify({ contents, bytes: packed.size, unpackedBytes: packed.unpackedSize, installation: 'isolated global prefix', checks: ['help', 'version', 'validate', 'compile', 'brg shim'], runtimeRequired: false }, null, 2));
+    console.log(JSON.stringify({ contents, bytes: packed.size, unpackedBytes: packed.unpackedSize, installation: 'isolated global prefix', checks: ['help', 'version', 'validate', 'compile', 'brg shim', 'pinned GHCR references'], runtimeRequired: false }, null, 2));
 } finally {
     rmSync(directory, { recursive: true, force: true });
 }

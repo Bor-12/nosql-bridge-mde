@@ -2,8 +2,7 @@ import { BridgeLanguageMetaData } from 'bridge-language';
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { compileAction, runAction, validateAction } from './actions.js';
-import { runtimeInstallAction, runtimeStatusAction } from './runtime/runtime-manager.js';
-import { RuntimeExitError } from './runtime-launcher.js';
+import { cleanupRun } from './execution/docker.js';
 import * as url from 'node:url';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
@@ -37,19 +36,17 @@ export default async function(): Promise<void> {
         .command('run')
         .argument('<file>', `source file (possible file extensions: ${fileExtensions})`)
         .option('-o, --output <file>', 'output plan file (default: <source-name>.plan.json beside the source)')
-        .requiredOption('--config <file>', 'external infrastructure configuration (bridge.yml)')
-        .option('--runtime <file>', 'Java runtime JAR (takes precedence over BRG_RUNTIME_JAR)')
-        .description('Compiles a BRG model and executes it with the Java runtime.')
+        .requiredOption('--config <file>', 'connections and execution configuration (bridge.yaml)')
+        .option('--logs-dir <directory>', 'directory for runtime logs (relative to the current working directory)')
+        .description('Compiles a BRG model and runs the distributed runtime through Docker.')
         .action(runAction);
 
-    const runtime = program.command('runtime').description('Install or inspect the compatible Java runtime.');
-    runtime.command('install').action(runtimeInstallAction);
-    runtime.command('status').action(runtimeStatusAction);
+    program.command('cleanup').argument('<execution-id>').description('Remove owned containers from an interrupted execution.').action(async id => { await cleanupRun(id); });
 
     try {
         await program.parseAsync(process.argv);
     } catch (error) {
         console.error(chalk.red(error instanceof Error ? error.message : String(error)));
-        process.exitCode = error instanceof RuntimeExitError ? error.exitCode : 1;
+        process.exitCode = 1;
     }
 }

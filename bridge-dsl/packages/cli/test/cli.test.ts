@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -35,6 +35,14 @@ function invokeCli(args: string[], env: NodeJS.ProcessEnv = {}, nodeArgs: string
 
 function copyFixture(name: string) {
     copyFileSync(path.join(fixtures, name), path.join(directory, name));
+}
+
+function copyMongoTargetModel(): void {
+    const model = readFileSync(path.join(fixtures, 'minimal.brg'), 'utf8')
+        .replace('target DynamoDB', 'target MongoDB')
+        .replace('table "Products"', 'database "shop"')
+        .replace('partitionKey "id"', 'collection "products_copy"');
+    writeFileSync(path.join(directory, 'mongo-target.brg'), model);
 }
 
 describe('brg validate', () => {
@@ -99,6 +107,15 @@ describe('brg validate', () => {
 });
 
 describe('brg compile', () => {
+    it('compiles a valid MongoDB source and target model', () => {
+        copyMongoTargetModel();
+        const result = run('compile', 'mongo-target.brg');
+        expect(result.status).toBe(0);
+        expect(result.stderr).toBe('');
+        const plan = JSON.parse(readFileSync(path.join(directory, 'mongo-target.plan.json'), 'utf8'));
+        expect(plan.source.technology).toBe('mongodb');
+        expect(plan.target.technology).toBe('mongodb');
+    });
     it.each(['minimal.brg', path.join('models', 'minimal.brg')])('writes the default plan beside %s', source => {
         const sourcePath = path.join(directory, source);
         mkdirSync(path.dirname(sourcePath), { recursive: true });
@@ -161,146 +178,32 @@ describe('brg compile', () => {
     });
 });
 
-describe('brg run', () => {
-    let runtimeJar: string;
-    let selectedRuntime: string;
-    let preload: string;
-    let invocation: string;
-
-    beforeEach(() => {
-        copyFixture('minimal.brg');
-        runtimeJar = path.join(directory, 'environment runtime.jar');
-        selectedRuntime = path.join(directory, 'selected runtime.jar');
-        preload = path.join(directory, 'fake-java.mjs');
-        invocation = path.join(directory, 'java-invocation.json');
-        writeFileSync(runtimeJar, 'test runtime');
-        writeFileSync(selectedRuntime, 'selected test runtime');
-        writeFileSync(preload, `
-import childProcess from 'node:child_process';
-import { EventEmitter } from 'node:events';
-import { writeFileSync } from 'node:fs';
-import { syncBuiltinESMExports } from 'node:module';
-
-childProcess.spawn = (command, args, options) => {
-    if (command !== 'java') throw new Error('Unexpected executable: ' + command);
-    writeFileSync(process.env.BRG_TEST_INVOCATION, JSON.stringify({ command, args, options }));
-    const child = new EventEmitter();
-    queueMicrotask(() => {
-        if (process.env.BRG_TEST_START_ERROR) {
-            child.emit('error', new Error(process.env.BRG_TEST_START_ERROR));
-        } else {
-            process.stdout.write('runtime stdout\\n');
-            process.stderr.write('runtime stderr\\n');
-            child.emit('close', Number(process.env.BRG_TEST_EXIT_CODE || 0), null);
-        }
-    });
-    return child;
-};
-syncBuiltinESMExports();
-`);
-    });
-
-    function runWithRuntime(args: string[], env: NodeJS.ProcessEnv = {}) {
-        writeFileSync(path.join(directory, 'bridge.yml'), 'bridge: {}');
-        return invokeCli([...args, '--config', 'bridge.yml'], {
-            BRG_RUNTIME_JAR: runtimeJar,
-            BRG_TEST_INVOCATION: invocation,
-            BRG_TEST_EXIT_CODE: '0',
-            BRG_TEST_START_ERROR: '',
-            ...env
-        }, ['--import', pathToFileURL(preload).href]);
-    }
-
-    it.each([
-        { options: [], output: 'minimal.plan.json', explicitRuntime: false },
-        { options: ['-o', 'plans/custom.plan.json'], output: 'plans/custom.plan.json', explicitRuntime: false },
-        { options: ['--output', 'plans/custom.plan.json'], output: 'plans/custom.plan.json', explicitRuntime: false },
-        { options: ['--runtime', 'selected runtime.jar'], output: 'minimal.plan.json', explicitRuntime: true },
-        { options: ['-o', 'plans/custom.plan.json', '--runtime', 'selected runtime.jar'], output: 'plans/custom.plan.json', explicitRuntime: true }
-    ])('compiles, retains and executes the selected plan ($options)', ({ options, output, explicitRuntime }) => {
-        const result = runWithRuntime(['run', 'minimal.brg', ...options]);
-
-        expect(result.status).toBe(0);
-        expect(result.stdout).toContain(`Compiled execution plan: ${output}`);
-        expect(result.stdout).toContain('runtime stdout');
-        expect(result.stderr).toContain('runtime stderr');
-        expect(JSON.parse(readFileSync(path.join(directory, output), 'utf8')).bridgeName).toBe('ProductBridge');
-        expect(JSON.parse(readFileSync(invocation, 'utf8'))).toEqual({
-            command: 'java',
-            args: ['-jar', explicitRuntime ? selectedRuntime : runtimeJar, '--plan', path.join(directory, output), '--config', path.join(directory, 'bridge.yml')],
-            options: { stdio: 'inherit', shell: false }
-        });
-        if (output !== 'minimal.plan.json') {
-            expect(existsSync(path.join(directory, 'minimal.plan.json'))).toBe(false);
-        }
-    });
-
-    it.each(['semantic', 'syntax', 'plan'])('rejects %s input without launching Java', kind => {
-        let source = 'minimal.brg';
-        if (kind === 'semantic') {
-            copyFixture('default-errors.brg');
-            source = 'default-errors.brg';
-        } else if (kind === 'syntax') {
-            const model = path.join(directory, source);
-            writeFileSync(model, readFileSync(model, 'utf8').trimEnd().slice(0, -1));
-        } else {
-            expect(run('compile', source).status).toBe(0);
-            source = 'minimal.plan.json';
-        }
-        writeFileSync(path.join(directory, 'bridge.yml'), 'bridge: {}');
-        const files = readdirSync(directory);
-        const originalSource = readFileSync(path.join(directory, source), 'utf8');
-
-        const result = runWithRuntime(['run', source]);
-
-        expect(result.status).toBe(1);
-        expect(result.stdout).toBe('');
-        expect(result.stderr).toContain(kind === 'plan' ? 'Please choose a file with one of these extensions: .brg.' : 'There are validation errors:');
-        expect(existsSync(invocation)).toBe(false);
-        expect(readdirSync(directory)).toEqual(files);
-        expect(readFileSync(path.join(directory, source), 'utf8')).toBe(originalSource);
-    });
-
-    it('reports a plan writing error without launching Java', () => {
-        writeFileSync(path.join(directory, 'blocked'), 'keep this file');
-
-        const result = runWithRuntime(['run', 'minimal.brg', '-o', 'blocked/plan.json']);
-
-        expect(result.status).toBe(1);
-        expect(result.stdout).toBe('');
-        expect(result.stderr).not.toBe('');
-        expect(existsSync(invocation)).toBe(false);
-        expect(readFileSync(path.join(directory, 'blocked'), 'utf8')).toBe('keep this file');
-    });
-
-    it.each([
-        { env: { BRG_TEST_EXIT_CODE: '7' }, exitCode: 7, message: 'Java runtime exited with code 7.' },
-        { env: { BRG_TEST_START_ERROR: 'spawn java ENOENT' }, exitCode: 1, message: 'Could not start Java runtime: spawn java ENOENT' }
-    ])('preserves the plan and reports $message', ({ env, exitCode, message }) => {
-        const result = runWithRuntime(['run', 'minimal.brg'], env);
-
-        expect(result.status).toBe(exitCode);
-        expect(result.stderr).toContain(message);
-        expect(JSON.parse(readFileSync(path.join(directory, 'minimal.plan.json'), 'utf8')).planVersion).toBe(1);
-    });
-});
-
 describe('CLI public commands', () => {
+    it.each([
+        ['validate', 'uri'], ['compile', 'uri'],
+        ['validate', 'futureOperationalSetting'], ['compile', 'futureOperationalSetting']
+    ])('%s rejects undeclared connector property %s without generating a plan', (command, property) => {
+        const model = readFileSync(path.join(fixtures, 'minimal.brg'), 'utf8')
+            .replace('database "shop"', `database "shop" ${property} "example-value"`);
+        writeFileSync(path.join(directory, 'invalid.brg'), model);
+        const result = run(command, 'invalid.brg');
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain(`Unknown property '${property}' for MongoDB source.`);
+        expect(result.stdout).toBe('');
+        expect(readdirSync(directory)).toEqual(['invalid.brg']);
+    });
     it('requires --config for run before loading the model or starting Java', () => {
         const result = run('run', 'missing.brg');
         expect(result.status).toBe(1);
         expect(result.stderr).toContain("required option '--config <file>'");
         expect(readdirSync(directory)).toEqual([]);
     });
-    it('documents the runtime option and its precedence in run help', () => {
+    it('documents distributed execution without a Java runtime override', () => {
         const result = run('run', '--help');
-
         expect(result.status).toBe(0);
-        expect(result.stdout).toContain('--runtime <file>');
-        expect(result.stdout).not.toContain('--keep-plan');
-        expect(result.stdout).toContain('-o, --output <file>');
-        expect(result.stdout).toMatch(/Java runtime JAR \(takes precedence over\s+BRG_RUNTIME_JAR\)/);
-        expect(result.stderr).toBe('');
+        expect(result.stdout).toContain('Docker');
+        expect(result.stdout).toContain('--logs-dir <directory>');
+        expect(result.stdout).not.toContain('--runtime');
     });
 
     it('continues documenting output selection for compile', () => {
