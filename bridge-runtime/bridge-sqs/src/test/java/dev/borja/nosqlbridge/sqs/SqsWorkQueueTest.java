@@ -9,6 +9,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,6 +21,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import software.amazon.awssdk.services.sqs.SqsClient;
+import software.amazon.awssdk.services.sqs.model.ChangeMessageVisibilityRequest;
 import software.amazon.awssdk.services.sqs.model.DeleteMessageRequest;
 import software.amazon.awssdk.services.sqs.model.GetQueueAttributesRequest;
 import software.amazon.awssdk.services.sqs.model.GetQueueAttributesResponse;
@@ -55,6 +59,139 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class SqsWorkQueueTest {
+    @Test
+    void renewsImmediatelyAndPeriodicallyAndStopsEvenQueuedCallbacksAfterClose() {
+        var scheduler = org.mockito.Mockito.mock(ScheduledExecutorService.class);
+        var queue = controlledQueue(scheduler);
+        var delivery = new Delivery(messageWithName("lease"), "receipt");
+        var lease = queue.maintainVisibility(delivery);
+        var task = periodicTask(scheduler);
+        verify(client).changeMessageVisibility(ChangeMessageVisibilityRequest.builder()
+                .queueUrl(QUEUE_URL).receiptHandle("receipt").visibilityTimeout(120).build());
+        task.run();
+        task.run();
+        lease.check();
+        lease.close();
+        task.run(); // A callback already dequeued when close started must do nothing.
+        lease.close();
+        lease.check();
+        verify(client, times(3)).changeMessageVisibility(any(ChangeMessageVisibilityRequest.class));
+        verify(scheduler, times(2)).shutdownNow();
+        verify(client, never()).deleteMessage(any(DeleteMessageRequest.class));
+    }
+
+    @Test
+    void reportsImmediateRenewalFailureAndStopsTheSchedulerOnClose() {
+        var scheduler = org.mockito.Mockito.mock(ScheduledExecutorService.class);
+        var queue = controlledQueue(scheduler);
+        org.mockito.Mockito.doThrow(new IllegalStateException("offline")).when(client)
+                .changeMessageVisibility(any(ChangeMessageVisibilityRequest.class));
+        try (var lease = queue.maintainVisibility(new Delivery(messageWithName("lease"), "receipt"))) {
+            assertThrows(IllegalStateException.class, lease::check);
+            periodicTask(scheduler).run();
+        }
+        verify(client).changeMessageVisibility(any(ChangeMessageVisibilityRequest.class));
+        verify(scheduler).shutdownNow();
+        verify(client, never()).deleteMessage(any(DeleteMessageRequest.class));
+    }
+
+    @Test
+    void retainsPeriodicRenewalFailureAfterClose() {
+        var scheduler = org.mockito.Mockito.mock(ScheduledExecutorService.class);
+        var queue = controlledQueue(scheduler);
+        when(client.changeMessageVisibility(any(ChangeMessageVisibilityRequest.class)))
+                .thenReturn(null).thenThrow(new IllegalStateException("offline"));
+        var lease = queue.maintainVisibility(new Delivery(messageWithName("lease"), "receipt"));
+        lease.check();
+        var task = periodicTask(scheduler);
+        task.run();
+        assertThrows(IllegalStateException.class, lease::check);
+        lease.close();
+        task.run();
+        assertThrows(IllegalStateException.class, lease::check);
+        verify(client, times(2)).changeMessageVisibility(any(ChangeMessageVisibilityRequest.class));
+    }
+
+    @Test
+    void closeWaitsForInFlightRenewalAndPreservesItsFailure() throws Exception {
+        var scheduler = org.mockito.Mockito.mock(ScheduledExecutorService.class);
+        var queue = controlledQueue(scheduler);
+        var calls = new AtomicInteger();
+        var renewing = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        when(client.changeMessageVisibility(any(ChangeMessageVisibilityRequest.class))).thenAnswer(invocation -> {
+            if (calls.incrementAndGet() == 2) {
+                renewing.countDown();
+                assertTrue(release.await(5, TimeUnit.SECONDS));
+                throw new IllegalStateException("in-flight failure");
+            }
+            return null;
+        });
+        var lease = queue.maintainVisibility(new Delivery(messageWithName("lease"), "receipt"));
+        var task = periodicTask(scheduler);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var renewal = executor.submit(task);
+            assertTrue(renewing.await(5, TimeUnit.SECONDS));
+            var closing = new CountDownLatch(1);
+            var closed = executor.submit(() -> {
+                closing.countDown();
+                lease.close();
+            });
+            assertTrue(closing.await(5, TimeUnit.SECONDS));
+            assertThrows(TimeoutException.class, () -> closed.get(100, TimeUnit.MILLISECONDS));
+            verify(scheduler, never()).shutdownNow();
+            release.countDown();
+            renewal.get(5, TimeUnit.SECONDS);
+            closed.get(5, TimeUnit.SECONDS);
+            verify(scheduler).shutdownNow();
+            assertThrows(IllegalStateException.class, lease::check);
+            task.run();
+            assertEquals(2, calls.get());
+        } finally {
+            release.countDown();
+            lease.close();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void closesOnAnInterruptedThreadWithoutClearingTheInterrupt() {
+        var scheduler = org.mockito.Mockito.mock(ScheduledExecutorService.class);
+        var lease = controlledQueue(scheduler).maintainVisibility(new Delivery(messageWithName("lease"), "receipt"));
+        Thread.currentThread().interrupt();
+        try {
+            lease.close();
+            assertTrue(Thread.currentThread().isInterrupted());
+            verify(scheduler).shutdownNow();
+            periodicTask(scheduler).run();
+            verify(client).changeMessageVisibility(any(ChangeMessageVisibilityRequest.class));
+        } finally { Thread.interrupted(); }
+    }
+
+    @Test
+    void closesSchedulerWhenPeriodicSchedulingFails() {
+        var scheduler = org.mockito.Mockito.mock(ScheduledExecutorService.class);
+        when(scheduler.scheduleWithFixedDelay(any(Runnable.class), org.mockito.ArgumentMatchers.eq(40L),
+                org.mockito.ArgumentMatchers.eq(40L), org.mockito.ArgumentMatchers.eq(TimeUnit.SECONDS)))
+                .thenThrow(new java.util.concurrent.RejectedExecutionException());
+        assertThrows(java.util.concurrent.RejectedExecutionException.class,
+                () -> controlledQueue(scheduler).maintainVisibility(new Delivery(messageWithName("lease"), "receipt")));
+        verify(scheduler).shutdownNow();
+    }
+
+    private SqsWorkQueue controlledQueue(ScheduledExecutorService scheduler) {
+        var queue = org.mockito.Mockito.spy(queue());
+        org.mockito.Mockito.doReturn(scheduler).when(queue).visibilityScheduler();
+        return queue;
+    }
+
+    private Runnable periodicTask(ScheduledExecutorService scheduler) {
+        var task = org.mockito.ArgumentCaptor.forClass(Runnable.class);
+        verify(scheduler).scheduleWithFixedDelay(task.capture(), org.mockito.ArgumentMatchers.eq(40L),
+                org.mockito.ArgumentMatchers.eq(40L), org.mockito.ArgumentMatchers.eq(TimeUnit.SECONDS));
+        return task.getValue();
+    }
 
     private static final String QUEUE_URL = "https://sqs.eu-west-1.amazonaws.com/123456789012/work";
 
@@ -149,7 +286,7 @@ class SqsWorkQueueTest {
         assertEquals(message, delivery.message());
         assertEquals("current-receipt", delivery.acknowledgementToken());
         verify(client).receiveMessage(ReceiveMessageRequest.builder().queueUrl(QUEUE_URL)
-                .maxNumberOfMessages(1).waitTimeSeconds(20).build());
+                .maxNumberOfMessages(1).waitTimeSeconds(20).visibilityTimeout(120).build());
         verify(client, never()).deleteMessage(any(DeleteMessageRequest.class));
 
         queue.acknowledge(delivery);

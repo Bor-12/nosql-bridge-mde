@@ -13,6 +13,7 @@ import dev.borja.nosqlbridge.worker.execution.WorkUnitExecutor;
 import dev.borja.nosqlbridge.common.queue.WorkQueue;
 import dev.borja.nosqlbridge.common.queue.WorkQueue.Delivery;
 import dev.borja.nosqlbridge.common.work.WorkUnitMessage;
+import dev.borja.nosqlbridge.common.work.ExecutionEvents;
 import dev.borja.nosqlbridge.worker.work.WorkUnitResult;
 import dev.borja.nosqlbridge.common.logging.SafeLogException;
 
@@ -75,11 +76,22 @@ public class WorkerConsumer {
             started = System.nanoTime();
             LOGGER.atDebug().addKeyValue("eventName", "WORKUNIT_STARTED")
                     .log("WORKUNIT_STARTED migrationId={} workUnitId={}", migrationId, workUnitId);
-            WorkUnitResult result = workUnitExecutor.execute(message.workUnit(), message.plan());
+            ExecutionEvents.emit("PROCESSING", migrationId.toString(), Map.of("workUnitId", workUnitId));
+            WorkUnitResult result;
+            WorkQueue.Lease lease = workQueue.maintainVisibility(delivery);
+            try (lease) {
+                if (lease != null) lease.check();
+                result = workUnitExecutor.execute(message.workUnit(), message.plan());
+            }
+            // Renewal is now stopped and any in-flight failure is visible;
+            // no background renewal can race with this check or the ACK.
+            if (lease != null) lease.check();
             MDC.put("phase", "interruption_check");
             checkInterrupted();
             MDC.put("phase", "acknowledge");
             workQueue.acknowledge(delivery);
+            ExecutionEvents.emit("ACKNOWLEDGED", migrationId.toString(), Map.of("workUnitId", workUnitId,
+                    "recordsRead", result.recordsRead(), "recordsWritten", result.recordsWritten()));
             long durationMs = (System.nanoTime() - started) / 1_000_000;
             ACK_LOGGER.atInfo().addKeyValue("eventName", "WORKUNIT_ACKNOWLEDGED")
                     .addKeyValue("recordsRead", result.recordsRead()).addKeyValue("recordsWritten", result.recordsWritten())

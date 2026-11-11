@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.DoubleSupplier;
 import java.util.function.LongSupplier;
 import java.util.Map;
+import dev.borja.nosqlbridge.common.work.ExecutionEvents;
 import dev.borja.nosqlbridge.worker.config.WorkerBackoffProperties;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.EventListener;
@@ -131,12 +132,14 @@ public class WorkerPollingTask {
             MDC.put("nextDelayMs", Long.toString(delayMs));
             consumer.logFailure(failure, Level.WARN, includeStack);
         } else if (decision.action() == WorkerFailureClassifier.Action.FATAL) {
+            emitFailure();
             stopped.set(true);
             consumer.stopReceiving();
             MDC.put("failureDisposition", "FATAL");
             consumer.logFailure(failure, Level.ERROR, includeStack);
             fatalShutdown.run();
         } else {
+            emitFailure();
             // Leave this delivery to SQS visibility/redrive; another unit may still be valid.
             consecutiveFailures = 0;
             nextAllowedNanos = 0;
@@ -149,8 +152,14 @@ public class WorkerPollingTask {
     @EventListener(ApplicationReadyEvent.class)
     public void ready() {
         if (stopped.get()) return;
+        ExecutionEvents.emit("READY", null, Map.of());
         LOGGER.atInfo().addKeyValue("eventName", "WORKER_READY")
                 .log("WORKER_READY workerId={}", System.getenv().getOrDefault("HOSTNAME", "local"));
+    }
+
+    private static void emitFailure() {
+        String migration = MDC.get("migrationId");
+        if (migration != null) ExecutionEvents.emit("FAILED", migration, Map.of());
     }
 
     @EventListener(ContextClosedEvent.class)

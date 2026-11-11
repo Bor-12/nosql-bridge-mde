@@ -13,6 +13,7 @@ import dev.borja.nosqlbridge.common.queue.WorkQueue;
 import dev.borja.nosqlbridge.common.work.MigrationId;
 import dev.borja.nosqlbridge.common.work.WorkUnitMessage;
 import dev.borja.nosqlbridge.common.work.WorkUnit;
+import dev.borja.nosqlbridge.common.work.ExecutionEvents;
 import dev.borja.nosqlbridge.common.logging.SafeLogException;
 
 public class MigrationPublisher {
@@ -53,6 +54,7 @@ public class MigrationPublisher {
         WorkUnit current = null;
         Map<String, String> previousContext = MDC.getCopyOfContextMap();
         try {
+            ExecutionEvents.emit("STARTED", migrationId.value().toString(), Map.of());
             MDC.put("migrationId", migrationId.value().toString());
             MDC.remove("workUnitId");
             MDC.remove("phase");
@@ -106,7 +108,9 @@ public class MigrationPublisher {
                     .addKeyValue("totalDurationMs", (System.nanoTime() - started) / 1_000_000)
                     .log("WORKUNITS_PUBLISHED migrationId={} publishedWorkUnits={} durationMs={}; consumers may still be processing.",
                             migrationId.value(), publishedMessages, publicationNanos / 1_000_000);
+            ExecutionEvents.emit("PUBLISHED", migrationId.value().toString(), Map.of("publishedWorkUnits", publishedMessages));
         } catch (RuntimeException failure) {
+            ExecutionEvents.emit("FAILED", migrationId.value().toString(), Map.of("publishedWorkUnits", publishedMessages));
             LOGGER.atError().addKeyValue("eventName", "MIGRATION_PUBLICATION_FAILED")
                     .addKeyValue("phase", phase).addKeyValue("publishedWorkUnits", publishedMessages)
                     .addKeyValue("workUnitsGenerated", generatedUnits).addKeyValue("errorType", failure.getClass().getName())

@@ -13,6 +13,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import dev.borja.nosqlbridge.worker.execution.WorkUnitExecutor;
 import dev.borja.nosqlbridge.common.plan.BridgeExecutionPlan;
@@ -32,13 +34,67 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class WorkerConsumerTest {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void reportsRenewalFailureThroughPollingWithoutEmittingAcknowledgement(boolean initialFailure, CapturedOutput output) {
+        WorkQueue.Lease lease = mock(WorkQueue.Lease.class);
+        when(workQueue.receive()).thenReturn(Optional.of(delivery));
+        when(workQueue.maintainVisibility(delivery)).thenReturn(lease);
+        if (initialFailure) {
+            doThrow(new IllegalStateException("renewal failed")).when(lease).check();
+        } else {
+            org.mockito.Mockito.doNothing().doThrow(new IllegalStateException("renewal failed")).when(lease).check();
+            when(workUnitExecutor.execute(unit, plan)).thenReturn(new WorkUnitResult(unit.migrationId(), unit.workUnitId(), 1, 1));
+        }
+
+        new WorkerPollingTask(consumer).poll();
+
+        verify(lease).close();
+        if (initialFailure) verifyNoInteractions(workUnitExecutor);
+        else verify(workUnitExecutor).execute(unit, plan);
+        verify(workQueue, org.mockito.Mockito.never()).acknowledge(delivery);
+        assertTrue(output.getOut().contains("\"type\":\"PROCESSING\""));
+        assertTrue(output.getOut().contains("\"type\":\"FAILED\""));
+        org.junit.jupiter.api.Assertions.assertFalse(output.getOut().contains("\"type\":\"ACKNOWLEDGED\""));
+    }
+
+    @Test
+    void refusesAcknowledgementWhenAnInFlightRenewalFailsDuringLeaseClose() {
+        var failed = new java.util.concurrent.atomic.AtomicBoolean();
+        WorkQueue.Lease lease = new WorkQueue.Lease() {
+            public void check() {
+                if (failed.get()) throw new IllegalStateException("renewal failed during close");
+            }
+            public void close() { failed.set(true); }
+        };
+        when(workQueue.receive()).thenReturn(Optional.of(delivery));
+        when(workQueue.maintainVisibility(delivery)).thenReturn(lease);
+        when(workUnitExecutor.execute(unit, plan)).thenReturn(new WorkUnitResult(unit.migrationId(), unit.workUnitId(), 1, 1));
+
+        assertThrows(IllegalStateException.class, consumer::processOne);
+
+        verify(workQueue, org.mockito.Mockito.never()).acknowledge(delivery);
+    }
+
+    @Test
+    void refusesAcknowledgementWhenVisibilityRenewalFailsAfterExecutionAndClosesLease() {
+        WorkQueue.Lease lease = mock(WorkQueue.Lease.class);
+        when(workQueue.receive()).thenReturn(Optional.of(delivery));
+        when(workQueue.maintainVisibility(delivery)).thenReturn(lease);
+        when(workUnitExecutor.execute(unit, plan)).thenReturn(new WorkUnitResult(unit.migrationId(), unit.workUnitId(), 1, 1));
+        org.mockito.Mockito.doNothing().doThrow(new IllegalStateException("renewal failed")).when(lease).check();
+        assertThrows(IllegalStateException.class, consumer::processOne);
+        verify(lease).close();
+        verify(workQueue, org.mockito.Mockito.never()).acknowledge(org.mockito.ArgumentMatchers.any(Delivery.class));
+    }
 
     @Mock
     private WorkQueue workQueue;
@@ -100,6 +156,7 @@ class WorkerConsumerTest {
     @ParameterizedTest
     @ValueSource(strings = {"beforeReceive", "afterReceive", "afterExecution"})
     void neverAcknowledgesInterruptedProcessing(String interruptionPoint) {
+        WorkQueue.Lease lease = mock(WorkQueue.Lease.class);
         WorkUnitResult result = new WorkUnitResult(unit.migrationId(), unit.workUnitId(), 5, 5);
         if ("beforeReceive".equals(interruptionPoint)) {
             Thread.currentThread().interrupt();
@@ -111,6 +168,7 @@ class WorkerConsumerTest {
                 return Optional.of(delivery);
             });
             if ("afterExecution".equals(interruptionPoint)) {
+                when(workQueue.maintainVisibility(delivery)).thenReturn(lease);
                 when(workUnitExecutor.execute(unit, plan)).thenAnswer(invocation -> {
                     Thread.currentThread().interrupt();
                     return result;
@@ -124,6 +182,8 @@ class WorkerConsumerTest {
                     .acknowledge(org.mockito.ArgumentMatchers.any(Delivery.class));
             if (!"afterExecution".equals(interruptionPoint)) {
                 verifyNoInteractions(workUnitExecutor);
+            } else {
+                verify(lease).close();
             }
         } finally {
             Thread.interrupted();
@@ -150,18 +210,28 @@ class WorkerConsumerTest {
 
     @ParameterizedTest
     @ValueSource(longs = {0, 5})
-    void acknowledgesExactlyOnceAfterExecutionAndReturnsTheResult(long count) {
+    void acknowledgesExactlyOnceAfterExecutionAndReturnsTheResult(long count, CapturedOutput output) {
+        WorkQueue.Lease lease = mock(WorkQueue.Lease.class);
         WorkUnitResult expected = new WorkUnitResult(unit.migrationId(), unit.workUnitId(), count, count);
         when(workQueue.receive()).thenReturn(Optional.of(delivery));
+        when(workQueue.maintainVisibility(delivery)).thenReturn(lease);
         when(workUnitExecutor.execute(same(unit), same(plan))).thenReturn(expected);
 
         assertSame(expected, consumer.processOne().orElseThrow());
 
-        InOrder order = inOrder(workQueue, workUnitExecutor);
+        InOrder order = inOrder(workQueue, workUnitExecutor, lease);
         order.verify(workQueue).receive();
+        order.verify(workQueue).maintainVisibility(org.mockito.ArgumentMatchers.any(Delivery.class));
+        order.verify(lease).check();
         order.verify(workUnitExecutor).execute(same(unit), same(plan));
+        order.verify(lease).close();
+        order.verify(lease).check();
         order.verify(workQueue).acknowledge(same(delivery));
-        verifyNoMoreInteractions(workQueue, workUnitExecutor);
+        verifyNoMoreInteractions(workQueue, workUnitExecutor, lease);
+        String events = output.getOut();
+        assertTrue(events.indexOf("\"type\":\"PROCESSING\"") < events.indexOf("\"type\":\"ACKNOWLEDGED\""));
+        assertTrue(events.contains("\"type\":\"ACKNOWLEDGED\""));
+        org.junit.jupiter.api.Assertions.assertFalse(events.contains("\"type\":\"FAILED\""));
     }
 
     @Test
@@ -178,14 +248,18 @@ class WorkerConsumerTest {
 
     @Test
     void propagatesExecutionFailureWithoutAcknowledgementOrRetry() {
+        WorkQueue.Lease lease = mock(WorkQueue.Lease.class);
         IllegalArgumentException failure = new IllegalArgumentException("Execution failed");
         when(workQueue.receive()).thenReturn(Optional.of(delivery));
+        when(workQueue.maintainVisibility(delivery)).thenReturn(lease);
         when(workUnitExecutor.execute(unit, plan)).thenThrow(failure);
 
         assertSame(failure, assertThrows(IllegalArgumentException.class, consumer::processOne));
 
         verify(workQueue).receive();
+        verify(workQueue).maintainVisibility(delivery);
         verify(workUnitExecutor).execute(same(unit), same(plan));
+        verify(lease).close();
         verifyNoMoreInteractions(workQueue, workUnitExecutor);
     }
 
@@ -201,6 +275,7 @@ class WorkerConsumerTest {
 
         InOrder order = inOrder(workQueue, workUnitExecutor);
         order.verify(workQueue).receive();
+        order.verify(workQueue).maintainVisibility(org.mockito.ArgumentMatchers.any(Delivery.class));
         order.verify(workUnitExecutor).execute(same(unit), same(plan));
         order.verify(workQueue).acknowledge(same(delivery));
         verifyNoMoreInteractions(workQueue, workUnitExecutor);
@@ -218,9 +293,11 @@ class WorkerConsumerTest {
 
         InOrder order = inOrder(workQueue, workUnitExecutor);
         order.verify(workQueue).receive();
+        order.verify(workQueue).maintainVisibility(org.mockito.ArgumentMatchers.any(Delivery.class));
         order.verify(workUnitExecutor).execute(same(unit), same(plan));
         order.verify(workQueue).acknowledge(same(delivery));
         order.verify(workQueue).receive();
+        order.verify(workQueue).maintainVisibility(org.mockito.ArgumentMatchers.any(Delivery.class));
         order.verify(workUnitExecutor).execute(same(unit), same(plan));
         order.verify(workQueue).acknowledge(same(redelivery));
         verifyNoMoreInteractions(workQueue, workUnitExecutor);

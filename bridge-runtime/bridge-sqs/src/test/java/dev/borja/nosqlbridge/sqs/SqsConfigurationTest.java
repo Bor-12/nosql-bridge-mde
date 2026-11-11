@@ -5,11 +5,10 @@ import java.net.URI;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.mockito.MockedStatic;
+
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sqs.SqsClient;
-import software.amazon.awssdk.services.sqs.SqsClientBuilder;
 
 import dev.borja.nosqlbridge.common.config.CommonConfiguration;
 import dev.borja.nosqlbridge.common.queue.WorkQueue;
@@ -21,13 +20,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.RETURNS_SELF;
+
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
-import static org.mockito.Mockito.when;
+
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class SqsConfigurationTest {
 
@@ -81,20 +79,10 @@ class SqsConfigurationTest {
     }
 
     @Test
-    void usesSdkDefaultsWithoutSqsRegionRegardlessOfDynamoDbRegion() {
-        SqsClient client = mock(SqsClient.class);
-        SqsClientBuilder builder = mock(SqsClientBuilder.class, RETURNS_SELF);
-        when(builder.build()).thenReturn(client);
-        try (MockedStatic<SqsClient> clients = mockStatic(SqsClient.class)) {
-            clients.when(SqsClient::builder).thenReturn(builder);
-            contextRunner.withPropertyValues(queueProperty, "bridge.dynamodb.region=us-east-1").run(context -> {
-                assertNull(context.getStartupFailure());
-                assertSame(client, context.getBean(SqsClient.class));
-                verify(builder).build();
-                verifyNoMoreInteractions(builder);
-                verifyNoInteractions(client);
-            });
-        }
+    void requiresExplicitSqsRegionRegardlessOfDynamoDbRegion() {
+        contextRunner.withPropertyValues(queueProperty, "bridge.dynamodb.region=us-east-1").run(context -> {
+            assertNotNull(context.getStartupFailure());
+        });
     }
 
     @Test

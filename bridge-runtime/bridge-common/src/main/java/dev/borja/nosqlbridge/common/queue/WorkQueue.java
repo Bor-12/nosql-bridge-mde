@@ -12,6 +12,21 @@ public interface WorkQueue {
 
     void acknowledge(Delivery delivery);
 
+    /** Brokers without visibility leases can keep the default no-op implementation. */
+    default Lease maintainVisibility(Delivery delivery) {
+        return new Lease() {
+            public void check() {}
+            public void close() {}
+        };
+    }
+
+    interface Lease extends AutoCloseable {
+        /** Reports renewal failure, including after close has frozen the result. */
+        void check();
+        /** Stops renewal and waits for in-flight renewal before returning. */
+        @Override void close();
+    }
+
     record Delivery(WorkUnitMessage message, String acknowledgementToken) {
 
         public Delivery {

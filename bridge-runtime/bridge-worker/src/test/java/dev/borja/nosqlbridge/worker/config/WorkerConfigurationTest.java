@@ -251,6 +251,7 @@ class WorkerConfigurationTest {
             assertTrue(scheduler.getScheduledThreadPoolExecutor().isTerminated());
             verify(queue).receive();
             verify(queue).acknowledge(delivery);
+            verify(queue).maintainVisibility(delivery);
             verifyNoMoreInteractions(queue);
             verify(executor).execute(delivery.message().workUnit(), delivery.message().plan());
             verifyNoMoreInteractions(executor);
@@ -292,6 +293,7 @@ class WorkerConfigurationTest {
                     assertTrue(scheduler.getScheduledThreadPoolExecutor().isTerminated());
                     assertTrue(resourceClosed.get());
                     verify(queue).receive();
+                    verify(queue).maintainVisibility(delivery);
                     verifyNoMoreInteractions(queue);
                 });
     }

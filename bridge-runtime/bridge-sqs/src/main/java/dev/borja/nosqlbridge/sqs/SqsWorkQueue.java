@@ -4,6 +4,10 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import software.amazon.awssdk.services.sqs.model.ChangeMessageVisibilityRequest;
 
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.DeleteMessageRequest;
@@ -26,8 +30,17 @@ public class SqsWorkQueue implements WorkQueue {
     private final WorkUnitMessageSerializer serializer;
     private final String queueUrl;
     private int cachedMaximumMessageSize;
+    private final int visibilityTimeoutSeconds;
 
     public SqsWorkQueue(SqsClient client, WorkUnitMessageSerializer serializer, String queueUrl) {
+        this(client, serializer, queueUrl, 120);
+    }
+
+    public SqsWorkQueue(SqsClient client, WorkUnitMessageSerializer serializer, String queueUrl, int visibilityTimeoutSeconds) {
+        if (visibilityTimeoutSeconds < 30 || visibilityTimeoutSeconds > 43200) {
+            throw new IllegalArgumentException("SQS visibility timeout must be between 30 and 43200 seconds.");
+        }
+        this.visibilityTimeoutSeconds = visibilityTimeoutSeconds;
         if (client == null) {
             throw new IllegalArgumentException("SQS client must not be null.");
         }
@@ -62,13 +75,57 @@ public class SqsWorkQueue implements WorkQueue {
     @Override
     public Optional<Delivery> receive() {
         List<Message> messages = client.receiveMessage(ReceiveMessageRequest.builder().queueUrl(queueUrl)
-                .maxNumberOfMessages(1).waitTimeSeconds(20).build()).messages();
+                .maxNumberOfMessages(1).waitTimeSeconds(20).visibilityTimeout(visibilityTimeoutSeconds).build()).messages();
         if (messages.isEmpty()) {
             return Optional.empty();
         }
         Message received = messages.getFirst();
         WorkUnitMessage message = serializer.deserialize(received.body());
         return Optional.of(new Delivery(message, received.receiptHandle()));
+    }
+
+    @Override
+    public Lease maintainVisibility(Delivery delivery) {
+        if (delivery == null) throw new IllegalArgumentException("Delivery must not be null.");
+        var scheduler = visibilityScheduler();
+        class VisibilityLease implements Lease {
+            private RuntimeException failure;
+            private boolean closed;
+
+            synchronized void renew() {
+                if (closed || failure != null) return;
+                try {
+                    client.changeMessageVisibility(ChangeMessageVisibilityRequest.builder().queueUrl(queueUrl)
+                            .receiptHandle(delivery.acknowledgementToken()).visibilityTimeout(visibilityTimeoutSeconds).build());
+                } catch (RuntimeException error) { failure = error; }
+            }
+            public synchronized void check() {
+                if (failure != null) throw new IllegalStateException("Could not renew SQS visibility; delivery will not be acknowledged.", failure);
+            }
+            public void close() {
+                // Wait for an in-flight renewal before freezing its result. Do not
+                // interrupt a successful request and mistake cancellation for failure.
+                synchronized (this) { closed = true; }
+                scheduler.shutdownNow();
+            }
+        }
+        var lease = new VisibilityLease();
+        try {
+            lease.renew();
+            scheduler.scheduleWithFixedDelay(lease::renew, visibilityTimeoutSeconds / 3, visibilityTimeoutSeconds / 3, TimeUnit.SECONDS);
+            return lease;
+        } catch (RuntimeException | Error failure) {
+            lease.close();
+            throw failure;
+        }
+    }
+
+    ScheduledExecutorService visibilityScheduler() {
+        return Executors.newSingleThreadScheduledExecutor(task -> {
+            Thread thread = new Thread(task, "bridge-sqs-visibility");
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 
     @Override

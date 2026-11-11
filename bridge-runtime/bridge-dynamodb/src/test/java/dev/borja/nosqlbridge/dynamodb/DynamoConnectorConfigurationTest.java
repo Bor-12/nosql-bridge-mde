@@ -11,7 +11,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.NestedExceptionUtils;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
-import software.amazon.awssdk.identity.spi.AwsCredentialsIdentity;
+
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.DynamoDbServiceClientConfiguration;
@@ -95,17 +95,14 @@ class DynamoConnectorConfigurationTest {
     @ParameterizedTest
     @ValueSource(strings = {"http://dynamodb-local:8000", "http://127.0.0.1:8000",
             "https://dynamodb.example.org", "HTTP://dynamodb-local:8000", "HTTPS://dynamodb.example.org"})
-    void explicitEndpointUsesDummyCredentials(String endpoint) {
+    void explicitEndpointKeepsDefaultCredentialsProvider(String endpoint) {
         contextRunner.withPropertyValues("bridge.dynamodb.region=eu-west-1",
                 "bridge.dynamodb.endpoint=" + endpoint).run(context -> {
             assertNull(context.getStartupFailure());
             DynamoDbServiceClientConfiguration config = context.getBean(DynamoDbClient.class).serviceClientConfiguration();
             assertEquals(URI.create(endpoint), config.endpointOverride().orElseThrow());
             assertEquals(Region.of("eu-west-1"), config.region());
-            assertTrue(config.credentialsProvider() instanceof StaticCredentialsProvider);
-            AwsCredentialsIdentity credentials = config.credentialsProvider().resolveIdentity().join();
-            assertEquals("dummy", credentials.accessKeyId());
-            assertEquals("dummy", credentials.secretAccessKey());
+            assertFalse(config.credentialsProvider() instanceof StaticCredentialsProvider);
         });
     }
 
@@ -131,7 +128,7 @@ class DynamoConnectorConfigurationTest {
     }
 
     @Test
-    void registersDefaultBeansWithLocalEndpointRegionAndDummyCredentials() {
+    void registersDefaultBeansWithoutInferringCredentialsFromEndpoint() {
         contextRunner.withPropertyValues("bridge.dynamodb.endpoint=http://localhost:8001",
                 "bridge.dynamodb.region=eu-west-1").run(context -> {
                     assertNull(context.getStartupFailure());
@@ -145,11 +142,7 @@ class DynamoConnectorConfigurationTest {
                     assertEquals(URI.create("http://localhost:8001"),
                             client.serviceClientConfiguration().endpointOverride().orElseThrow());
                     assertEquals(Region.of("eu-west-1"), client.serviceClientConfiguration().region());
-                    assertTrue(client.serviceClientConfiguration().credentialsProvider() instanceof StaticCredentialsProvider);
-                    AwsCredentialsIdentity credentials = client.serviceClientConfiguration()
-                            .credentialsProvider().resolveIdentity().join();
-                    assertEquals("dummy", credentials.accessKeyId());
-                    assertEquals("dummy", credentials.secretAccessKey());
+                    assertFalse(client.serviceClientConfiguration().credentialsProvider() instanceof StaticCredentialsProvider);
                 });
     }
 

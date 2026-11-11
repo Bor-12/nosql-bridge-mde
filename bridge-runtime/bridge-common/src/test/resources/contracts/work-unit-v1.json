@@ -1,0 +1,25 @@
+{
+  "workUnit": {
+    "migrationId": { "value": "550e8400-e29b-41d4-a716-446655440000" },
+    "workUnitId": { "value": 0 },
+    "sourcePartition": {
+      "type": "mongodb-bson-id-range",
+      "parameters": { "upperInclusive": "{\"value\":\"product-001\"}" }
+    }
+  },
+  "plan": {
+    "planVersion": 1,
+    "bridgeName": "ProductBridge",
+    "source": { "technology": "mongodb", "config": { "database": "shop", "collection": "products" } },
+    "target": { "technology": "dynamodb", "config": { "table": "Products", "partitionKey": "id" } },
+    "unmappedPolicy": "drop",
+    "nullPolicy": "preserve",
+    "mappings": [
+      { "source": "_id", "target": "id" },
+      { "source": "name", "target": "name" },
+      { "source": "price", "target": "price" },
+      { "source": "stock", "target": "stock" },
+      { "source": "category.name", "target": "category" }
+    ]
+  }
+}

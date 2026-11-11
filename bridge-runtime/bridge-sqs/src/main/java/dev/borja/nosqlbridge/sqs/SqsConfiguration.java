@@ -24,10 +24,8 @@ public class SqsConfiguration {
     @ConditionalOnMissingBean(SqsClient.class)
     public SqsClient sqsClient(@Value("${bridge.sqs.region:}") String region,
             @Value("${bridge.sqs.endpoint:}") String endpoint) {
-        SqsClientBuilder builder = SqsClient.builder();
-        if (!region.isBlank()) {
-            builder.region(Region.of(region));
-        }
+        if (region.isBlank()) throw new IllegalArgumentException("bridge.sqs.region must be explicitly configured.");
+        SqsClientBuilder builder = SqsClient.builder().region(Region.of(region));
         if (!endpoint.isEmpty()) {
             URI address;
             try {
@@ -47,7 +45,8 @@ public class SqsConfiguration {
     @Bean
     @ConditionalOnMissingBean(WorkQueue.class)
     public WorkQueue workQueue(SqsClient client, WorkUnitMessageSerializer serializer,
-            @Value("${bridge.sqs.queue-url}") String queueUrl) {
-        return new SqsWorkQueue(client, serializer, queueUrl);
+            @Value("${bridge.sqs.queue-url}") String queueUrl,
+            @Value("${bridge.sqs.visibility-timeout-seconds:120}") int visibilityTimeoutSeconds) {
+        return new SqsWorkQueue(client, serializer, queueUrl, visibilityTimeoutSeconds);
     }
 }
