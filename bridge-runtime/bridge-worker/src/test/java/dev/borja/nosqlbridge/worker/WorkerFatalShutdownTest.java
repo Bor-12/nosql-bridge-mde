@@ -16,7 +16,7 @@ import dev.borja.nosqlbridge.worker.config.WorkerConfiguration;
 import dev.borja.nosqlbridge.worker.execution.WorkUnitExecutor;
 import dev.borja.nosqlbridge.worker.mapping.DefaultValueConverter;
 import dev.borja.nosqlbridge.worker.mapping.MappingEngine;
-import dev.borja.nosqlbridge.worker.model.LogicalPathResolver;
+import dev.borja.nosqlbridge.worker.mapping.LogicalPathResolver;
 import dev.borja.nosqlbridge.worker.transformation.TransformationEngine;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -46,7 +46,6 @@ class WorkerFatalShutdownTest {
     /** Runs the production Spring wiring with a queue stub; no broker or database is contacted. */
     public static class FatalWorker {
         public static void main(String[] args) {
-            System.setProperty("bridge.runtime.mode", "worker");
             var context = new AnnotationConfigApplicationContext();
             context.registerBean("probeResource", ProbeResource.class, ProbeResource::new,
                     bean -> bean.setDestroyMethodName("close"));
@@ -57,9 +56,10 @@ class WorkerFatalShutdownTest {
                 }
                 @Override public void acknowledge(Delivery delivery) { throw new AssertionError("Unexpected ACK"); }
             });
-            context.registerBean(WorkUnitExecutor.class, () -> new WorkUnitExecutor(
+            context.registerBean("testExecutor", WorkUnitExecutor.class, () -> new WorkUnitExecutor(
                     new TechnologyRegistry(List.of(), List.of()),
-                    new MappingEngine(new LogicalPathResolver(), new TransformationEngine(), new DefaultValueConverter()), 25));
+                    new MappingEngine(new LogicalPathResolver(), new TransformationEngine(), new DefaultValueConverter()), 25),
+                    definition -> definition.setPrimary(true));
             context.register(WorkerConfiguration.class);
             context.refresh();
         }

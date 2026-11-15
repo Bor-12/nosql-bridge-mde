@@ -7,7 +7,6 @@ import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import dev.borja.nosqlbridge.worker.model.LogicalPathResolver;
 import dev.borja.nosqlbridge.common.model.LogicalRecord;
 import dev.borja.nosqlbridge.common.model.LogicalValue;
 import dev.borja.nosqlbridge.common.plan.MappingDefaultValue;

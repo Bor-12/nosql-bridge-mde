@@ -1,4 +1,4 @@
-package dev.borja.nosqlbridge.worker;
+package dev.borja.nosqlbridge.worker.consumer;
 
 import java.util.List;
 import java.util.Map;
@@ -21,7 +21,7 @@ import dev.borja.nosqlbridge.common.plan.ConnectorPlan;
 import dev.borja.nosqlbridge.common.queue.WorkQueue;
 import dev.borja.nosqlbridge.common.work.*;
 import dev.borja.nosqlbridge.worker.execution.WorkUnitExecutor;
-import dev.borja.nosqlbridge.worker.work.WorkUnitResult;
+import dev.borja.nosqlbridge.worker.execution.WorkUnitResult;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 

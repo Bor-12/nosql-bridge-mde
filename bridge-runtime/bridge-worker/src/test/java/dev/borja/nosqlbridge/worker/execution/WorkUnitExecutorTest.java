@@ -19,7 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import dev.borja.nosqlbridge.worker.mapping.DefaultValueConverter;
 import dev.borja.nosqlbridge.worker.mapping.MappingEngine;
-import dev.borja.nosqlbridge.worker.model.LogicalPathResolver;
+import dev.borja.nosqlbridge.worker.mapping.LogicalPathResolver;
 import dev.borja.nosqlbridge.common.model.LogicalRecord;
 import dev.borja.nosqlbridge.common.model.LogicalValue;
 import dev.borja.nosqlbridge.common.plan.BridgeExecutionPlan;
@@ -36,7 +36,6 @@ import dev.borja.nosqlbridge.common.work.MigrationId;
 import dev.borja.nosqlbridge.common.work.SourcePartition;
 import dev.borja.nosqlbridge.common.work.WorkUnit;
 import dev.borja.nosqlbridge.common.work.WorkUnitId;
-import dev.borja.nosqlbridge.worker.work.WorkUnitResult;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;

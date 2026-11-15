@@ -1,4 +1,4 @@
-package dev.borja.nosqlbridge.worker;
+package dev.borja.nosqlbridge.worker.consumer;
 
 import java.util.Optional;
 

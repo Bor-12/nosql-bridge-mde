@@ -1,9 +1,10 @@
 package dev.borja.nosqlbridge.worker.config;
 
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -12,14 +13,31 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 import dev.borja.nosqlbridge.worker.execution.WorkUnitExecutor;
 import dev.borja.nosqlbridge.common.queue.WorkQueue;
-import dev.borja.nosqlbridge.worker.WorkerConsumer;
-import dev.borja.nosqlbridge.worker.WorkerPollingTask;
+import dev.borja.nosqlbridge.common.config.CommonConfiguration;
+import dev.borja.nosqlbridge.common.registry.TechnologyRegistry;
+import dev.borja.nosqlbridge.worker.mapping.DefaultValueConverter;
+import dev.borja.nosqlbridge.worker.mapping.MappingEngine;
+import dev.borja.nosqlbridge.worker.mapping.LogicalPathResolver;
+import dev.borja.nosqlbridge.worker.transformation.TransformationEngine;
+import dev.borja.nosqlbridge.worker.consumer.WorkerConsumer;
+import dev.borja.nosqlbridge.worker.consumer.WorkerPollingTask;
 
 @Configuration(proxyBeanMethods = false)
-@ConditionalOnProperty(name = "bridge.runtime.mode", havingValue = "worker")
+@Import(CommonConfiguration.class)
 @EnableScheduling
 @EnableConfigurationProperties(WorkerBackoffProperties.class)
 public class WorkerConfiguration {
+
+    @Bean
+    public MappingEngine mappingEngine() {
+        return new MappingEngine(new LogicalPathResolver(), new TransformationEngine(), new DefaultValueConverter());
+    }
+
+    @Bean
+    public WorkUnitExecutor workUnitExecutor(TechnologyRegistry technologyRegistry, MappingEngine mappingEngine,
+            @Value("${bridge.execution.batch-size:25}") int batchSize) {
+        return new WorkUnitExecutor(technologyRegistry, mappingEngine, batchSize);
+    }
 
     @Bean
     public WorkerConsumer workerConsumer(ObjectProvider<WorkQueue> queues, WorkUnitExecutor executor) {

@@ -1,4 +1,4 @@
-package dev.borja.nosqlbridge.worker;
+package dev.borja.nosqlbridge.worker.consumer;
 
 import java.net.SocketTimeoutException;
 import java.time.Duration;
@@ -25,7 +25,7 @@ import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.sqs.model.SqsException;
 import dev.borja.nosqlbridge.worker.config.WorkerBackoffProperties;
 import dev.borja.nosqlbridge.worker.execution.WorkUnitExecutor;
-import dev.borja.nosqlbridge.worker.work.WorkUnitResult;
+import dev.borja.nosqlbridge.worker.execution.WorkUnitResult;
 import dev.borja.nosqlbridge.common.plan.*;
 import dev.borja.nosqlbridge.common.queue.WorkQueue;
 import dev.borja.nosqlbridge.common.work.*;

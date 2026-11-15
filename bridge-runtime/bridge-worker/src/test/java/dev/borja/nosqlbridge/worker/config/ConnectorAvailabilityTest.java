@@ -34,9 +34,9 @@ import dev.borja.nosqlbridge.dynamodb.DynamoTargetConnector;
 import dev.borja.nosqlbridge.mongodb.MongoSourceConnector;
 import dev.borja.nosqlbridge.sqs.SqsWorkQueue;
 import dev.borja.nosqlbridge.worker.BridgeWorkerApplication;
-import dev.borja.nosqlbridge.worker.WorkerConsumer;
+import dev.borja.nosqlbridge.worker.consumer.WorkerConsumer;
+import dev.borja.nosqlbridge.worker.consumer.WorkerPollingTask;
 import dev.borja.nosqlbridge.worker.execution.WorkUnitExecutor;
-import dev.borja.nosqlbridge.worker.runner.PlanRunner;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -69,13 +69,11 @@ class ConnectorAvailabilityTest {
         try (MockedStatic<MongoClients> mongoClients = mockStatic(MongoClients.class);
                 MockedStatic<DynamoDbClient> dynamoClients = mockStatic(DynamoDbClient.class)) {
             contextRunner.withBean(SqsClient.class, () -> sqsClient)
-                    .withPropertyValues("bridge.runtime.mode=worker",
-                            "bridge.sqs.queue-url=https://sqs.eu-west-1.amazonaws.com/123456789012/work")
+                    .withPropertyValues("bridge.sqs.queue-url=https://sqs.eu-west-1.amazonaws.com/123456789012/work")
                     .run(context -> {
                         assertNull(context.getStartupFailure());
                         assertEquals(1, context.getBeansOfType(WorkerConsumer.class).size());
                         assertInstanceOf(SqsWorkQueue.class, context.getBean(WorkQueue.class));
-                        assertTrue(context.getBeansOfType(PlanRunner.class).isEmpty());
                         TechnologyRegistry registry = context.getBean(TechnologyRegistry.class);
                         assertSame(context.getBean(SourceTechnologyFactory.class), registry.sourceFactory("mongodb"));
                         assertSame(context.getBean(TargetConnectorFactory.class), registry.targetFactory("dynamodb"));
@@ -90,9 +88,10 @@ class ConnectorAvailabilityTest {
     void selectsInstalledConnectorWithInjectedClientWithoutRequiringUnusedTechnology(String technology) {
         MongoClient mongoClient = mock(MongoClient.class);
         DynamoDbClient dynamoDbClient = mock(DynamoDbClient.class);
+        ApplicationContextRunner withQueue = contextRunner.withBean(WorkQueue.class, () -> mock(WorkQueue.class));
         ApplicationContextRunner configured = "mongodb".equals(technology)
-                ? contextRunner.withBean(MongoClient.class, () -> mongoClient)
-                : contextRunner.withBean(DynamoDbClient.class, () -> dynamoDbClient);
+                ? withQueue.withBean(MongoClient.class, () -> mongoClient)
+                : withQueue.withBean(DynamoDbClient.class, () -> dynamoDbClient);
 
         configured.run(context -> {
             assertNull(context.getStartupFailure());
@@ -116,7 +115,7 @@ class ConnectorAvailabilityTest {
 
     @Test
     void distinguishesUnsupportedTechnologyAndRoleFromMissingConfiguration() {
-        contextRunner.run(context -> {
+        contextRunner.withBean(WorkQueue.class, () -> mock(WorkQueue.class)).run(context -> {
             assertNull(context.getStartupFailure());
             TechnologyRegistry registry = context.getBean(TechnologyRegistry.class);
             assertEquals("Unsupported source technology: unknown", assertThrows(IllegalArgumentException.class,
@@ -138,7 +137,7 @@ class ConnectorAvailabilityTest {
                 new WorkUnitId(0), new SourcePartition("test", Map.of()));
         BridgeExecutionPlan plan = new BridgeExecutionPlan(1, "test", sourcePlan, targetPlan, "preserve", "omit", List.of());
         Delivery delivery = new Delivery(new WorkUnitMessage(unit, plan), "receipt");
-        when(queue.receive()).thenReturn(Optional.of(delivery));
+        when(queue.receive()).thenReturn(Optional.empty());
         ApplicationContextRunner configured = contextRunner.withBean(WorkQueue.class, () -> queue);
         if ("dynamodb".equals(technology)) {
             configured = configured.withBean(MongoClient.class, () -> mock(MongoClient.class));
@@ -146,6 +145,10 @@ class ConnectorAvailabilityTest {
 
         configured.run(context -> {
             assertNull(context.getStartupFailure());
+            context.getBean(WorkerPollingTask.class).stop();
+            context.getBean(org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler.class).shutdown();
+            org.mockito.Mockito.clearInvocations(queue);
+            when(queue.receive()).thenReturn(Optional.of(delivery));
             WorkerConsumer consumer = new WorkerConsumer(queue, context.getBean(WorkUnitExecutor.class));
             RuntimeException failure = assertThrows(RuntimeException.class, consumer::processOne);
             String property = "mongodb".equals(technology) ? "bridge.mongodb.uri" : "bridge.dynamodb.region";

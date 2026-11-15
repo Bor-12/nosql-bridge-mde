@@ -1,4 +1,4 @@
-package dev.borja.nosqlbridge.worker.model;
+package dev.borja.nosqlbridge.worker.mapping;
 
 import dev.borja.nosqlbridge.common.model.LogicalRecord;
 import dev.borja.nosqlbridge.common.model.LogicalValue;

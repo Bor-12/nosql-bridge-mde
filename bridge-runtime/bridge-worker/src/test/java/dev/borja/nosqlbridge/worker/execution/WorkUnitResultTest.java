@@ -1,4 +1,4 @@
-package dev.borja.nosqlbridge.worker.work;
+package dev.borja.nosqlbridge.worker.execution;
 
 import dev.borja.nosqlbridge.common.work.MigrationId;
 import dev.borja.nosqlbridge.common.work.WorkUnitId;

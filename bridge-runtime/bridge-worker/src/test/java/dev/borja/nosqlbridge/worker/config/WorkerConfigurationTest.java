@@ -20,21 +20,22 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.scheduling.config.FixedDelayTask;
 
 import dev.borja.nosqlbridge.worker.execution.WorkUnitExecutor;
+import dev.borja.nosqlbridge.worker.mapping.MappingEngine;
+import dev.borja.nosqlbridge.common.registry.TechnologyRegistry;
+import dev.borja.nosqlbridge.common.work.WorkUnitMessageSerializer;
+import tools.jackson.databind.ObjectMapper;
 import dev.borja.nosqlbridge.common.plan.BridgeExecutionPlan;
 import dev.borja.nosqlbridge.common.plan.ConnectorPlan;
-import dev.borja.nosqlbridge.common.plan.PlanLoader;
-import dev.borja.nosqlbridge.common.plan.PlanValidator;
 import dev.borja.nosqlbridge.common.queue.WorkQueue;
 import dev.borja.nosqlbridge.common.queue.WorkQueue.Delivery;
-import dev.borja.nosqlbridge.worker.runner.PlanRunner;
 import dev.borja.nosqlbridge.common.work.MigrationId;
 import dev.borja.nosqlbridge.common.work.SourcePartition;
 import dev.borja.nosqlbridge.common.work.WorkUnit;
 import dev.borja.nosqlbridge.common.work.WorkUnitId;
 import dev.borja.nosqlbridge.common.work.WorkUnitMessage;
-import dev.borja.nosqlbridge.worker.work.WorkUnitResult;
-import dev.borja.nosqlbridge.worker.WorkerConsumer;
-import dev.borja.nosqlbridge.worker.WorkerPollingTask;
+import dev.borja.nosqlbridge.worker.execution.WorkUnitResult;
+import dev.borja.nosqlbridge.worker.consumer.WorkerConsumer;
+import dev.borja.nosqlbridge.worker.consumer.WorkerPollingTask;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -54,7 +55,7 @@ import static org.mockito.Mockito.doAnswer;
 class WorkerConfigurationTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-            .withUserConfiguration(ExecutionConfiguration.class, WorkerConfiguration.class);
+            .withUserConfiguration(WorkerConfiguration.class);
     private final WorkQueue queue = mock(WorkQueue.class);
 
     @Test
@@ -70,7 +71,7 @@ class WorkerConfigurationTest {
                             "BRIDGE_WORKER_BACKOFF_MAX_DELAY", "7s",
                             "BRIDGE_WORKER_BACKOFF_JITTER_RATIO", "0.2",
                             "BRIDGE_WORKER_BACKOFF_STACK_TRACE_INTERVAL", "15s")));
-        }).withBean(WorkQueue.class, () -> queue).withPropertyValues("bridge.runtime.mode=worker").run(context -> {
+        }).withBean(WorkQueue.class, () -> queue).run(context -> {
             assertNull(context.getStartupFailure());
             WorkerBackoffProperties properties = context.getBean(WorkerBackoffProperties.class);
             assertSame(properties, org.springframework.test.util.ReflectionTestUtils.getField(
@@ -86,7 +87,7 @@ class WorkerConfigurationTest {
     @Test
     void bindsBackoffConfigurationWithoutChangingTheOneSecondScheduler() {
         when(queue.receive()).thenReturn(Optional.empty());
-        contextRunner.withBean(WorkQueue.class, () -> queue).withPropertyValues("bridge.runtime.mode=worker",
+        contextRunner.withBean(WorkQueue.class, () -> queue).withPropertyValues(
                 "bridge.worker.backoff.initial-delay=2s", "bridge.worker.backoff.max-delay=12s",
                 "bridge.worker.backoff.jitter-ratio=0.25", "bridge.worker.backoff.stack-trace-interval=45s")
                 .run(context -> {
@@ -104,19 +105,24 @@ class WorkerConfigurationTest {
     @ParameterizedTest
     @ValueSource(strings = {"initial-delay=0s", "max-delay=0s", "jitter-ratio=1.5", "stack-trace-interval=0s"})
     void rejectsInvalidBackoffConfigurationAtStartup(String property) {
-        contextRunner.withBean(WorkQueue.class, () -> queue).withPropertyValues("bridge.runtime.mode=worker",
+        contextRunner.withBean(WorkQueue.class, () -> queue).withPropertyValues(
                 "bridge.worker.backoff." + property).run(context -> assertNotNull(context.getStartupFailure()));
     }
 
     @Test
     void startsWorkerWithoutPlanAndRegistersOneSequentialScheduledTask() {
-        contextRunner.withBean(WorkQueue.class, () -> queue).withPropertyValues("bridge.runtime.mode=worker")
+        contextRunner.withBean(WorkQueue.class, () -> queue)
                 .run(context -> {
                     assertNull(context.getStartupFailure());
                     assertEquals(1, context.getBeansOfType(WorkerConsumer.class).size());
                     assertEquals(1, context.getBeansOfType(WorkUnitExecutor.class).size());
+                    assertEquals(1, context.getBeansOfType(MappingEngine.class).size());
+                    assertEquals(1, context.getBeansOfType(TechnologyRegistry.class).size());
+                    assertEquals(1, context.getBeansOfType(ObjectMapper.class).size());
+                    assertEquals(1, context.getBeansOfType(WorkUnitMessageSerializer.class).size());
+                    assertSame(context.getBean(WorkUnitExecutor.class), org.springframework.test.util.ReflectionTestUtils.getField(
+                            context.getBean(WorkerConsumer.class), "workUnitExecutor"));
                     assertEquals(1, context.getBeansOfType(WorkerPollingTask.class).size());
-                    assertTrue(context.getBeansOfType(PlanRunner.class).isEmpty());
                     ThreadPoolTaskScheduler scheduler = context.getBean(ThreadPoolTaskScheduler.class);
                     assertEquals(1, scheduler.getScheduledThreadPoolExecutor().getCorePoolSize());
                     ScheduledAnnotationBeanPostProcessor processor = context.getBean(ScheduledAnnotationBeanPostProcessor.class);
@@ -127,31 +133,9 @@ class WorkerConfigurationTest {
                 });
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"unused.json", ""})
-    void workerNeverRegistersLocalPlanComponentsEvenWhenPlanPropertyExists(String plan) {
-        contextRunner.withBean(WorkQueue.class, () -> queue)
-                .withPropertyValues("bridge.runtime.mode=worker", "bridge.execution.plan=" + plan).run(context -> {
-                    assertNull(context.getStartupFailure());
-                    assertTrue(context.getBeansOfType(PlanRunner.class).isEmpty());
-                    assertTrue(context.getBeansOfType(PlanLoader.class).isEmpty());
-                    assertTrue(context.getBeansOfType(PlanValidator.class).isEmpty());
-                });
-    }
-
-    @Test
-    void doesNotStartWorkerInLocalMode() {
-        contextRunner.withPropertyValues("bridge.execution.plan=unused.json").run(context -> {
-            assertNull(context.getStartupFailure());
-            assertEquals(1, context.getBeansOfType(PlanRunner.class).size());
-            assertTrue(context.getBeansOfType(WorkerConsumer.class).isEmpty());
-            assertTrue(context.getBeansOfType(ThreadPoolTaskScheduler.class).isEmpty());
-        });
-    }
-
     @Test
     void failsClearlyWhenWorkerHasNoQueueInfrastructure() {
-        contextRunner.withPropertyValues("bridge.runtime.mode=worker").run(context -> {
+        contextRunner.run(context -> {
             assertNotNull(context.getStartupFailure());
             assertEquals("Worker mode requires bridge.sqs.queue-url or a WorkQueue bean.",
                     NestedExceptionUtils.getMostSpecificCause(context.getStartupFailure()).getMessage());
@@ -300,8 +284,8 @@ class WorkerConfigurationTest {
 
     private ApplicationContextRunner lifecycleContext(WorkUnitExecutor executor, CountDownLatch closing) {
         return new ApplicationContextRunner().withUserConfiguration(WorkerConfiguration.class)
-                .withBean(WorkQueue.class, () -> queue).withBean(WorkUnitExecutor.class, () -> executor)
-                .withPropertyValues("bridge.runtime.mode=worker").withInitializer(context ->
+                .withBean(WorkQueue.class, () -> queue).withBean("testExecutor", WorkUnitExecutor.class, () -> executor, definition -> definition.setPrimary(true))
+                .withInitializer(context ->
                         context.addApplicationListener(event -> {
                             if (event instanceof ContextClosedEvent) {
                                 closing.countDown();

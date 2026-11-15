@@ -1,4 +1,4 @@
-package dev.borja.nosqlbridge.worker;
+package dev.borja.nosqlbridge.worker.consumer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

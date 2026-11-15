@@ -12,7 +12,6 @@ import dev.borja.nosqlbridge.common.source.connector.RecordCursor;
 import dev.borja.nosqlbridge.common.source.connector.SourceConnector;
 import dev.borja.nosqlbridge.common.target.TargetConnector;
 import dev.borja.nosqlbridge.common.work.WorkUnit;
-import dev.borja.nosqlbridge.worker.work.WorkUnitResult;
 
 public class WorkUnitExecutor {
 

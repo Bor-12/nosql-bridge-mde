@@ -1,4 +1,4 @@
-package dev.borja.nosqlbridge.worker;
+package dev.borja.nosqlbridge.worker.consumer;
 
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
@@ -11,7 +11,7 @@ import software.amazon.awssdk.core.exception.ApiCallTimeoutException;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.exception.SdkServiceException;
 import software.amazon.awssdk.services.sqs.model.SqsException;
-import static dev.borja.nosqlbridge.worker.WorkerFailureClassifier.Kind.*;
+import static dev.borja.nosqlbridge.worker.consumer.WorkerFailureClassifier.Kind.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class WorkerFailureClassifierTest {

@@ -353,7 +353,7 @@ class BridgeOrchestratorApplicationTest {
                     assertTrue(context.getBeansOfType(TargetConnectorFactory.class).isEmpty());
                     assertInstanceOf(SqsWorkQueue.class, context.getBean(WorkQueue.class));
                     assertTrue(context.getBeansOfType(ScheduledAnnotationBeanPostProcessor.class).isEmpty());
-                    assertFalse(ClassUtils.isPresent("dev.borja.nosqlbridge.worker.WorkerConsumer", getClass().getClassLoader()));
+                    assertFalse(ClassUtils.isPresent("dev.borja.nosqlbridge.worker.consumer.WorkerConsumer", getClass().getClassLoader()));
                     assertFalse(ClassUtils.isPresent("software.amazon.awssdk.services.dynamodb.DynamoDbClient", getClass().getClassLoader()));
                     verifyNoInteractions(mongoClient, sqsClient);
                 }

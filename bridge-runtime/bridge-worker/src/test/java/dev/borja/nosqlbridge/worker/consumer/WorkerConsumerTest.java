@@ -1,4 +1,4 @@
-package dev.borja.nosqlbridge.worker;
+package dev.borja.nosqlbridge.worker.consumer;
 
 import java.util.List;
 import java.util.Map;
@@ -26,7 +26,7 @@ import dev.borja.nosqlbridge.common.work.SourcePartition;
 import dev.borja.nosqlbridge.common.work.WorkUnit;
 import dev.borja.nosqlbridge.common.work.WorkUnitId;
 import dev.borja.nosqlbridge.common.work.WorkUnitMessage;
-import dev.borja.nosqlbridge.worker.work.WorkUnitResult;
+import dev.borja.nosqlbridge.worker.execution.WorkUnitResult;
 
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;

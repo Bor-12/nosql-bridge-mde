@@ -3,9 +3,9 @@ package dev.borja.nosqlbridge.worker.mapping;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
 import org.slf4j.MDC;
 
-import dev.borja.nosqlbridge.worker.model.LogicalPathResolver;
 import dev.borja.nosqlbridge.common.model.LogicalRecord;
 import dev.borja.nosqlbridge.common.model.LogicalValue;
 import dev.borja.nosqlbridge.common.plan.MappingPlan;

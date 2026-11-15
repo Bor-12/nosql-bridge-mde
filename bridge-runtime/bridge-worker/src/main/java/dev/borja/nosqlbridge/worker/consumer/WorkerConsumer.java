@@ -1,4 +1,4 @@
-package dev.borja.nosqlbridge.worker;
+package dev.borja.nosqlbridge.worker.consumer;
 
 import java.util.Optional;
 import java.util.Map;
@@ -14,7 +14,7 @@ import dev.borja.nosqlbridge.common.queue.WorkQueue;
 import dev.borja.nosqlbridge.common.queue.WorkQueue.Delivery;
 import dev.borja.nosqlbridge.common.work.WorkUnitMessage;
 import dev.borja.nosqlbridge.common.work.ExecutionEvents;
-import dev.borja.nosqlbridge.worker.work.WorkUnitResult;
+import dev.borja.nosqlbridge.worker.execution.WorkUnitResult;
 import dev.borja.nosqlbridge.common.logging.SafeLogException;
 
 public class WorkerConsumer {

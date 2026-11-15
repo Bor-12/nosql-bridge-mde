@@ -11,7 +11,8 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
-import dev.borja.nosqlbridge.worker.config.ExecutionConfiguration;
+import dev.borja.nosqlbridge.worker.config.WorkerConfiguration;
+import dev.borja.nosqlbridge.common.queue.WorkQueue;
 import dev.borja.nosqlbridge.common.model.LogicalRecord;
 import dev.borja.nosqlbridge.common.model.LogicalValue;
 import dev.borja.nosqlbridge.common.plan.BridgeExecutionPlan;
@@ -38,7 +39,8 @@ import static org.mockito.Mockito.when;
 class WorkUnitExecutorConfigurationTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-            .withUserConfiguration(ExecutionConfiguration.class);
+            .withUserConfiguration(WorkerConfiguration.class)
+            .withBean(WorkQueue.class, () -> mock(WorkQueue.class));
 
     @ParameterizedTest
     @CsvSource({"'', 25", "bridge.execution.batch-size=2, 2"})
