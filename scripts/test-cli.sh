@@ -1,49 +1,113 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-workers=3
-worker_image=bridge-worker:ci
-orchestrator_image=bridge-orchestrator:ci
+worker_count=3
+worker_image=${BRG_TEST_WORKER_IMAGE:-bridge-worker:ci}
+orchestrator_image=${BRG_TEST_ORCHESTRATOR_IMAGE:-bridge-orchestrator:ci}
 check_failure=false
 via_host=false
 use_profile=false
-while (($#)); do
-    case "$1" in
-        --workers)
-            [[ $# -ge 2 && $2 =~ ^[1-8]$ ]] || { echo '--workers necesita un valor de 1 a 8' >&2; exit 1; }
-            workers=$2; shift 2 ;;
-        --check-failure) check_failure=true; shift ;;
-        --via-host) via_host=true; shift ;;
-        --use-profile) use_profile=true; shift ;;
-        -h|--help)
-            echo 'Uso: bash scripts/test-cli.sh [--workers 1..8] [--check-failure] [--via-host] [--use-profile]'
-            echo 'Requiere Linux/WSL, Node >=22.12, Docker Compose >=2.24.4, AWS CLI y jq.'
-            echo 'Construir antes la CLI y las imágenes bridge-worker:ci y bridge-orchestrator:ci.'
-            echo 'Prueba 105 documentos, particiones de 10 y recursos Compose aislados. No borra imágenes.'
-            exit 0 ;;
-        *) echo "Opción desconocida: $1" >&2; exit 1 ;;
-    esac
-done
 
-die() { echo "ERROR: $*" >&2; exit 1; }
-for tool in node docker aws jq; do
-    command -v "$tool" >/dev/null || die "Falta $tool dentro de Linux/WSL"
-done
-repository=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-cli="$repository/bridge-dsl/packages/cli/bin/cli.js"
-[[ -f "$repository/bridge-dsl/packages/cli/dist/cli.js" ]] || die 'Compila primero la CLI en bridge-dsl/'
-docker info >/dev/null || die 'Docker no está disponible'
-docker image inspect "$worker_image" "$orchestrator_image" >/dev/null || die 'Construye primero las dos imágenes :ci'
+die() {
+    echo "ERROR: $*" >&2
+    exit 1
+}
 
-umask 077
-project="brg-e2e-$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
-directory="$repository/scripts/test-results/$project"
-mkdir -p "$directory/home"
-export DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}"
-export AWS_ACCESS_KEY_ID=dummy AWS_SECRET_ACCESS_KEY=dummy AWS_EC2_METADATA_DISABLED=true
-unset AWS_SESSION_TOKEN AWS_PROFILE
+show_help() {
+    echo 'Uso: bash scripts/test-cli.sh [--workers 1..8] [--check-failure] [--via-host] [--use-profile]'
+    echo 'Requiere Linux/WSL, Node >=22.12, Docker Compose >=2.24.4, AWS CLI y jq.'
+    echo 'Construir antes la CLI y las imágenes bridge-worker:ci y bridge-orchestrator:ci.'
+    echo 'Release puede seleccionar la CLI y las imágenes mediante BRG_TEST_CLI_PATH, BRG_TEST_WORKER_IMAGE y BRG_TEST_ORCHESTRATOR_IMAGE.'
+    echo 'Prueba 105 documentos, particiones de 10 y recursos Compose aislados. No borra imágenes.'
+}
 
-cat >"$directory/compose.override.yaml" <<'COMPOSE'
+parse_arguments() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --workers)
+                if [[ $# -lt 2 ]]; then
+                    die '--workers necesita un valor de 1 a 8'
+                fi
+                case "$2" in
+                    [1-8])
+                        worker_count=$2
+                        ;;
+                    *)
+                        die '--workers necesita un valor de 1 a 8'
+                        ;;
+                esac
+                shift 2
+                ;;
+            --check-failure)
+                check_failure=true
+                shift
+                ;;
+            --via-host)
+                via_host=true
+                shift
+                ;;
+            --use-profile)
+                use_profile=true
+                shift
+                ;;
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            *)
+                die "Opción desconocida: $1"
+                ;;
+        esac
+    done
+}
+
+check_dependencies() {
+    local tool
+    for tool in node docker aws jq; do
+        if ! command -v "$tool" >/dev/null; then
+            die "Falta $tool dentro de Linux/WSL"
+        fi
+    done
+
+    local script_directory
+    script_directory=$(dirname -- "${BASH_SOURCE[0]}")
+    repository_root=$(
+        if ! cd -- "$script_directory/.."; then
+            exit 1
+        fi
+        pwd
+    )
+    cli_path=${BRG_TEST_CLI_PATH:-"$repository_root/bridge-dsl/packages/cli/bin/cli.js"}
+    if [[ ! -f "$cli_path" ]]; then
+        die "CLI no encontrada: $cli_path"
+    fi
+    if [[ ! -f "$repository_root/bridge-dsl/packages/cli/dist/cli.js" ]]; then
+        die 'Compila primero la CLI en bridge-dsl/'
+    fi
+    if ! docker info >/dev/null; then
+        die 'Docker no está disponible'
+    fi
+    if ! docker image inspect "$worker_image" "$orchestrator_image" >/dev/null; then
+        die "Imágenes no disponibles: $worker_image y $orchestrator_image"
+    fi
+}
+
+prepare_test_environment() {
+    # Cada prueba tiene sus propios servicios, estado de brg y diagnósticos.
+    umask 077
+    project_name="brg-e2e-$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
+    results_directory="$repository_root/scripts/test-results/$project_name"
+    mkdir -p "$results_directory/home"
+
+    # Docker conserva su configuración aunque brg utilice un HOME aislado.
+    export DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}"
+    export AWS_ACCESS_KEY_ID=dummy
+    export AWS_SECRET_ACCESS_KEY=dummy
+    export AWS_EC2_METADATA_DISABLED=true
+    unset AWS_SESSION_TOKEN AWS_PROFILE
+
+    # Puertos libres y sin volúmenes de datos del entorno de desarrollo.
+    cat >"$results_directory/compose.override.yaml" <<'COMPOSE'
 services:
   mongodb:
     ports: !override ["0:27017"]
@@ -57,115 +121,118 @@ services:
 volumes: !reset {}
 COMPOSE
 
-compose() {
-    docker compose --project-directory "$repository" -p "$project" \
-        -f "$repository/docker-compose.yaml" -f "$directory/compose.override.yaml" "$@"
+    trap cleanup EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
 }
 
+compose() {
+    docker compose --project-directory "$repository_root" -p "$project_name" \
+        -f "$repository_root/docker-compose.yaml" \
+        -f "$results_directory/compose.override.yaml" "$@"
+}
+
+# El subshell evita cambiar el HOME y las credenciales de los demás comandos.
 brg() (
-    export HOME="$directory/home"
+    export HOME="$results_directory/home"
     export BRG_TEST_WORKER_IMAGE="$worker_image"
     export BRG_TEST_ORCHESTRATOR_IMAGE="$orchestrator_image"
     if [[ $use_profile == true ]]; then
         unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
         export AWS_PROFILE=bridge-cli-test
-        export AWS_SHARED_CREDENTIALS_FILE="$directory/test-credentials"
-        export AWS_CONFIG_FILE="$directory/test-aws-config"
+        export AWS_SHARED_CREDENTIALS_FILE="$results_directory/test-credentials"
+        export AWS_CONFIG_FILE="$results_directory/test-aws-config"
     fi
-    node "$cli" "$@"
+    node "$cli_path" "$@"
 )
-
-cleanup() {
-    local status=$?
-    local failed=false
-    trap - EXIT
-    compose logs --no-color >"$directory/services.log" 2>&1 || true
-    for manifest in "$directory/home/.brg/runs"/brg-*/run.json; do
-        [[ -f $manifest ]] || continue
-        local id
-        id=$(jq -er '.id' "$manifest") || { failed=true; continue; }
-        brg cleanup "$id" >>"$directory/cleanup.log" 2>&1 || failed=true
-    done
-    compose down --volumes --remove-orphans >"$directory/compose-cleanup.log" 2>&1 || failed=true
-    if [[ $status == 0 && $failed == true ]]; then status=1; fi
-    if [[ $status != 0 ]]; then
-        echo 'ERROR: logs de los servicios de prueba:' >&2
-        tail -n 100 "$directory/services.log" >&2
-        echo 'ERROR: E2E fallido. Diagnósticos de limpieza:' >&2
-        cat "$directory/compose-cleanup.log" >&2
-        for log in "$directory/runtime-logs"/brg-*/*.log; do
-            [[ -f $log ]] || continue
-            echo "--- $log ---" >&2
-            tail -n 100 "$log" >&2
-        done
-    fi
-    echo "Diagnósticos conservados en: $directory"
-    if [[ $status == 0 ]]; then
-        echo "PASS: 105 documentos, 11 WorkUnits, $workers workers configurados; ver evidence.json para saber cuáles procesaron trabajo."
-    fi
-    exit "$status"
-}
-trap cleanup EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
 
 local_aws() {
     local endpoint=$1
     shift
-    [[ $endpoint =~ ^http://localhost:[0-9]+$ ]] || die 'El test solo permite endpoints AWS locales'
+    if [[ ! $endpoint =~ ^http://localhost:[0-9]+$ ]]; then
+        die 'El test solo permite endpoints AWS locales'
+    fi
     aws --endpoint-url "$endpoint" --region us-east-1 --no-cli-pager \
         --cli-connect-timeout 3 --cli-read-timeout 5 --output json "$@"
 }
 
 wait_until_ready() {
-    local service=$1
-    shift
+    local service_name=$1
     local deadline=$((SECONDS + 90))
-    until "$@" >"$directory/readiness.log" 2>&1; do
-        if ((SECONDS >= deadline)); then cat "$directory/readiness.log" >&2; die "Servicio no disponible: $service"; fi
+    shift
+    while true; do
+        if "$@" >"$results_directory/readiness.log" 2>&1; then
+            return 0
+        fi
+        if ((SECONDS >= deadline)); then
+            cat "$results_directory/readiness.log" >&2
+            die "Servicio no disponible: $service_name"
+        fi
         sleep 2
     done
 }
 
 host_port() {
-    local container
-    container=$(compose ps -q "$1")
-    [[ -n $container ]] || die "No se encuentra el servicio $1"
-    docker inspect "$container" | jq -er --arg port "$2" '.[0].NetworkSettings.Ports[$port][0].HostPort'
+    local service_name=$1
+    local container_port=$2
+    local container_id
+    container_id=$(compose ps -q "$service_name")
+    if [[ -z $container_id ]]; then
+        die "No se encuentra el servicio $service_name"
+    fi
+    docker inspect "$container_id" | jq -er --arg port "$container_port" \
+        '.[0].NetworkSettings.Ports[$port][0].HostPort'
 }
 
-echo '1. Preparar emuladores aislados'
-compose config --format json >"$directory/compose.json"
-jq -e '(.volumes // {} | length) == 0 and
-    ([.services.mongodb.volumes[]?, .services["dynamodb-local"].volumes[]?] | length) == 0' \
-    "$directory/compose.json" >/dev/null || die 'El test no debe montar volúmenes de desarrollo'
-docker image inspect "$worker_image" "$orchestrator_image" >"$directory/images.json"
-compose up -d mongodb dynamodb-local elasticmq
-network=$(jq -er '.networks.default.name' "$directory/compose.json")
-mongo_port=$(host_port mongodb 27017/tcp)
-dynamo_port=$(host_port dynamodb-local 8000/tcp)
-sqs_port=$(host_port elasticmq 9324/tcp)
-dynamo_endpoint="http://localhost:$dynamo_port"
-sqs_endpoint="http://localhost:$sqs_port"
-wait_until_ready MongoDB compose exec -T mongodb mongosh --quiet --eval 'if (db.adminCommand({ping:1}).ok !== 1) quit(1)'
-wait_until_ready 'DynamoDB Local' local_aws "$dynamo_endpoint" dynamodb list-tables
-wait_until_ready ElasticMQ local_aws "$sqs_endpoint" sqs list-queues
+start_test_services() {
+    echo '1. Preparar emuladores aislados'
+    compose config --format json >"$results_directory/compose.json"
+    # No iniciar servicios si Compose vuelve a incluir volúmenes de desarrollo.
+    if ! jq -e '(.volumes // {} | length) == 0 and
+        ([.services.mongodb.volumes[]?, .services["dynamodb-local"].volumes[]?] | length) == 0' \
+        "$results_directory/compose.json" >/dev/null; then
+        die 'El test no debe montar volúmenes de desarrollo'
+    fi
 
-echo '2. Preparar 105 documentos, una tabla vacía y la cola'
-local_aws "$dynamo_endpoint" dynamodb create-table --table-name BridgeCliTest \
-    --attribute-definitions AttributeName=id,AttributeType=S \
-    --key-schema AttributeName=id,KeyType=HASH --billing-mode PAY_PER_REQUEST >/dev/null
-local_aws "$dynamo_endpoint" dynamodb wait table-exists --table-name BridgeCliTest
-queue_url=$(local_aws "$sqs_endpoint" sqs create-queue --queue-name migration-work | jq -er '.QueueUrl')
-queue_path="/$(echo "$queue_url" | cut -d '/' -f 4-)"
-compose exec -T mongodb mongosh --quiet --eval "
-    db.getSiblingDB('bridge_cli_test').products.insertMany(
-        Array.from({length: 105}, (_, i) => ({
-            _id: 'item-' + (i + 1), name: 'Product ' + (i + 1), price: '12.50', stock: '3'
-        }))
-    )" >/dev/null
+    docker image inspect "$worker_image" "$orchestrator_image" >"$results_directory/images.json"
+    compose up -d mongodb dynamodb-local elasticmq
+    network_name=$(jq -er '.networks.default.name' "$results_directory/compose.json")
+    mongo_host_port=$(host_port mongodb 27017/tcp)
+    dynamo_host_port=$(host_port dynamodb-local 8000/tcp)
+    sqs_host_port=$(host_port elasticmq 9324/tcp)
+    dynamo_endpoint="http://localhost:$dynamo_host_port"
+    sqs_endpoint="http://localhost:$sqs_host_port"
 
-cat >"$directory/migration.brg" <<'MODEL'
+    wait_until_ready MongoDB compose exec -T mongodb mongosh --quiet --eval 'if (db.adminCommand({ping:1}).ok !== 1) quit(1)'
+    wait_until_ready 'DynamoDB Local' local_aws "$dynamo_endpoint" dynamodb list-tables
+    wait_until_ready ElasticMQ local_aws "$sqs_endpoint" sqs list-queues
+}
+
+write_config() {
+    local mongo_connection_uri=$1
+    local config_file=$2
+    cat >"$config_file" <<CONFIG
+connections:
+  mongodb:
+    uri: $mongo_connection_uri
+  dynamodb:
+    endpoint: $dynamo_service
+    region: us-east-1
+  sqs:
+    endpoint: $sqs_service
+    queueUrl: $sqs_service$queue_path
+    region: us-east-1
+execution:
+  network: $network_name
+  recordsPerPartition: 10
+  timeoutSeconds: 300
+  workers:
+    count: $worker_count
+CONFIG
+}
+
+prepare_migration_files() {
+    cat >"$results_directory/migration.brg" <<'MODEL'
 bridge CliSmoke {
   source MongoDB { database "bridge_cli_test" collection "products" }
   target DynamoDB { table "BridgeCliTest" partitionKey "id" }
@@ -178,45 +245,58 @@ bridge CliSmoke {
   }
 }
 MODEL
-mongo_uri='mongodb://mongodb:27017'
-dynamo_service='http://dynamodb-local:8000'
-sqs_service='http://elasticmq:9324'
-if [[ $via_host == true ]]; then
-    network=bridge
-    mongo_uri="mongodb://host.docker.internal:$mongo_port"
-    dynamo_service="http://host.docker.internal:$dynamo_port"
-    sqs_service="http://host.docker.internal:$sqs_port"
-fi
-write_config() {
-    cat >"$2" <<CONFIG
-connections:
-  mongodb:
-    uri: $1
-  dynamodb:
-    endpoint: $dynamo_service
-    region: us-east-1
-  sqs:
-    endpoint: $sqs_service
-    queueUrl: $sqs_service$queue_path
-    region: us-east-1
-execution:
-  network: $network
-  recordsPerPartition: 10
-  timeoutSeconds: 300
-  workers:
-    count: $workers
-CONFIG
+
+    mongo_uri='mongodb://mongodb:27017'
+    dynamo_service='http://dynamodb-local:8000'
+    sqs_service='http://elasticmq:9324'
+    if [[ $via_host == true ]]; then
+        network_name=bridge
+        mongo_uri="mongodb://host.docker.internal:$mongo_host_port"
+        dynamo_service="http://host.docker.internal:$dynamo_host_port"
+        sqs_service="http://host.docker.internal:$sqs_host_port"
+    fi
+    write_config "$mongo_uri" "$results_directory/bridge.yaml"
+
+    # Perfil ficticio para probar el montaje de credenciales, sin acceder a AWS.
+    cat >"$results_directory/test-credentials" <<'CREDENTIALS'
+[bridge-cli-test]
+aws_access_key_id=dummy
+aws_secret_access_key=dummy
+CREDENTIALS
+    cat >"$results_directory/test-aws-config" <<'AWS_CONFIG'
+[profile bridge-cli-test]
+region=us-east-1
+AWS_CONFIG
 }
-write_config "$mongo_uri" "$directory/bridge.yaml"
-printf '[bridge-cli-test]\naws_access_key_id=dummy\naws_secret_access_key=dummy\n' >"$directory/test-credentials"
-printf '[profile bridge-cli-test]\nregion=us-east-1\n' >"$directory/test-aws-config"
 
-echo "3. Ejecutar la CLI real con $workers workers y las imágenes :ci"
-brg run "$directory/migration.brg" --config "$directory/bridge.yaml" \
-    --logs-dir "$directory/runtime-logs" 2>&1 | tee "$directory/cli.log"
-local_aws "$dynamo_endpoint" dynamodb scan --table-name BridgeCliTest --consistent-read >"$directory/destination.json"
+create_test_data() {
+    echo '2. Preparar 105 documentos, una tabla vacía y la cola'
+    local_aws "$dynamo_endpoint" dynamodb create-table --table-name BridgeCliTest \
+        --attribute-definitions AttributeName=id,AttributeType=S \
+        --key-schema AttributeName=id,KeyType=HASH --billing-mode PAY_PER_REQUEST >/dev/null
+    local_aws "$dynamo_endpoint" dynamodb wait table-exists --table-name BridgeCliTest
+    local queue_url
+    queue_url=$(local_aws "$sqs_endpoint" sqs create-queue --queue-name migration-work | jq -er '.QueueUrl')
+    queue_path="/$(echo "$queue_url" | cut -d '/' -f 4-)"
+    compose exec -T mongodb mongosh --quiet --eval "
+        db.getSiblingDB('bridge_cli_test').products.insertMany(
+            Array.from({length: 105}, (_, i) => ({
+                _id: 'item-' + (i + 1), name: 'Product ' + (i + 1), price: '12.50', stock: '3'
+            }))
+        )" >/dev/null
+    prepare_migration_files
+}
 
-node - "$directory" "$workers" <<'JS' | tee "$directory/evidence.json"
+run_migration() {
+    echo "3. Ejecutar la CLI real con $worker_count workers: $worker_image y $orchestrator_image"
+    brg run "$results_directory/migration.brg" --config "$results_directory/bridge.yaml" \
+        --logs-dir "$results_directory/runtime-logs" 2>&1 | tee "$results_directory/cli.log"
+}
+
+verify_migration() {
+    local_aws "$dynamo_endpoint" dynamodb scan --table-name BridgeCliTest --consistent-read >"$results_directory/destination.json"
+    # Node permite comprobar documentos, tipos y eventos sin complicar Bash.
+    node - "$results_directory" "$worker_count" <<'JS' | tee "$results_directory/evidence.json"
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -269,17 +349,22 @@ assert.equal(units.size, 11, 'Deben confirmarse todas las WorkUnits distintas');
 assert.equal([...units.values()].reduce((sum, count) => sum + count, 0), 105);
 console.log(JSON.stringify({executionId, documents: 105, acknowledgedWorkUnits: units.size, workersWithAcks}, null, 2));
 JS
+}
 
-echo '4. Comprobar limpieza de contenedores y fallo controlado'
-if [[ $check_failure == true ]]; then
-    write_config 'mongodb://host.docker.internal:1/?serverSelectionTimeoutMS=1000&connectTimeoutMS=1000' "$directory/bad-connection.yaml"
-    if brg run "$directory/migration.brg" --config "$directory/bad-connection.yaml" \
-        --logs-dir "$directory/runtime-logs" 2>&1 | tee "$directory/connection-failure.log"; then
+run_failure_test() {
+    echo '4. Comprobar fallo controlado'
+    write_config 'mongodb://host.docker.internal:1/?serverSelectionTimeoutMS=1000&connectTimeoutMS=1000' "$results_directory/bad-connection.yaml"
+    if brg run "$results_directory/migration.brg" --config "$results_directory/bad-connection.yaml" \
+        --logs-dir "$results_directory/runtime-logs" 2>&1 | tee "$results_directory/connection-failure.log"; then
         die 'La conexión incorrecta devolvió éxito'
     fi
-    grep -q '^FAILED ' "$directory/connection-failure.log" || die 'Falta el diagnóstico FAILED'
-    if grep -q '^COMPLETED ' "$directory/connection-failure.log"; then die 'El fallo produjo COMPLETED'; fi
-    node - "$directory" <<'JS'
+    if ! grep -q '^FAILED ' "$results_directory/connection-failure.log"; then
+        die 'Falta el diagnóstico FAILED'
+    fi
+    if grep -q '^COMPLETED ' "$results_directory/connection-failure.log"; then
+        die 'El fallo produjo COMPLETED'
+    fi
+    node - "$results_directory" <<'JS'
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -292,20 +377,33 @@ assert.equal(failed.length, 1);
 const logs = fs.readdirSync(failed[0].logsDirectory).map(file => fs.readFileSync(path.join(failed[0].logsDirectory, file), 'utf8')).join('\n');
 assert.ok(logs.includes('"type":"FAILED"'), 'El runtime debe registrar el fallo');
 JS
-fi
-for manifest in "$directory/home/.brg/runs"/brg-*/run.json; do
-    id=$(jq -er '.id' "$manifest")
-    remaining=$(docker ps -a --filter "label=dev.nosqlbridge.run=$id" --format '{{.Names}}')
-    [[ -z $remaining ]] || die "Contenedores residuales de $id: $remaining"
-done
-for service in mongodb dynamodb-local elasticmq; do
-    container=$(compose ps -q "$service")
-    [[ -n $container ]] || die "La CLI ha eliminado el servicio $service"
-    docker inspect "$container" | jq -e '.[0].State.Running == true' >/dev/null
-done
-compose exec -T mongodb mongosh --quiet --eval "if (db.getSiblingDB('bridge_cli_test').products.countDocuments({}) !== 105) quit(1)"
-local_aws "$dynamo_endpoint" dynamodb scan --table-name BridgeCliTest --consistent-read >"$directory/after-failure.json"
-node - "$directory" <<'JS'
+}
+
+verify_resources() {
+    echo '5. Comprobar limpieza y conservación de los datos'
+    local manifest_file
+    local execution_id
+    local remaining_containers
+    for manifest_file in "$results_directory/home/.brg/runs"/brg-*/run.json; do
+        execution_id=$(jq -er '.id' "$manifest_file")
+        remaining_containers=$(docker ps -a --filter "label=dev.nosqlbridge.run=$execution_id" --format '{{.Names}}')
+        if [[ -n $remaining_containers ]]; then
+            die "Contenedores residuales de $execution_id: $remaining_containers"
+        fi
+    done
+
+    local service_name
+    local container_id
+    for service_name in mongodb dynamodb-local elasticmq; do
+        container_id=$(compose ps -q "$service_name")
+        if [[ -z $container_id ]]; then
+            die "La CLI ha eliminado el servicio $service_name"
+        fi
+        docker inspect "$container_id" | jq -e '.[0].State.Running == true' >/dev/null
+    done
+    compose exec -T mongodb mongosh --quiet --eval "if (db.getSiblingDB('bridge_cli_test').products.countDocuments({}) !== 105) quit(1)"
+    local_aws "$dynamo_endpoint" dynamodb scan --table-name BridgeCliTest --consistent-read >"$results_directory/after-failure.json"
+    node - "$results_directory" <<'JS'
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -313,4 +411,89 @@ const root = process.argv[2];
 const items = file => JSON.parse(fs.readFileSync(path.join(root, file), 'utf8')).Items.sort((a, b) => a.id.S.localeCompare(b.id.S));
 assert.deepEqual(items('after-failure.json'), items('destination.json'), 'El fallo no debe cambiar los datos previos');
 JS
-local_aws "$sqs_endpoint" sqs get-queue-attributes --queue-url "$sqs_endpoint$queue_path" --attribute-names QueueArn >/dev/null
+    local_aws "$sqs_endpoint" sqs get-queue-attributes --queue-url "$sqs_endpoint$queue_path" --attribute-names QueueArn >/dev/null
+}
+
+cleanup_cli_containers() {
+    local cleanup_failed=false
+    local manifest_file
+    local execution_id
+    for manifest_file in "$results_directory/home/.brg/runs"/brg-*/run.json; do
+        if [[ ! -f $manifest_file ]]; then
+            continue
+        fi
+        if ! execution_id=$(jq -er '.id' "$manifest_file"); then
+            cleanup_failed=true
+            continue
+        fi
+        if ! brg cleanup "$execution_id" >>"$results_directory/cleanup.log" 2>&1; then
+            cleanup_failed=true
+        fi
+    done
+    if [[ $cleanup_failed == true ]]; then
+        return 1
+    fi
+}
+
+print_failure_logs() {
+    echo 'ERROR: logs de los servicios de prueba:' >&2
+    tail -n 100 "$results_directory/services.log" >&2
+    echo 'ERROR: E2E fallido. Diagnósticos de limpieza:' >&2
+    cat "$results_directory/compose-cleanup.log" >&2
+    local log_file
+    for log_file in "$results_directory/runtime-logs"/brg-*/*.log; do
+        if [[ -f $log_file ]]; then
+            echo "--- $log_file ---" >&2
+            tail -n 100 "$log_file" >&2
+        fi
+    done
+}
+
+cleanup() {
+    # Guardar el resultado antes de limpiar y evitar volver a ejecutar el trap.
+    local exit_status=$?
+    local cleanup_failed=false
+    trap - EXIT
+    if ! compose logs --no-color >"$results_directory/services.log" 2>&1; then
+        echo 'No se pudieron obtener todos los logs de Compose.' >&2
+    fi
+    if ! cleanup_cli_containers; then
+        cleanup_failed=true
+    fi
+    # Solo se elimina el proyecto único de esta prueba, nunca las imágenes.
+    if ! compose down --volumes --remove-orphans >"$results_directory/compose-cleanup.log" 2>&1; then
+        cleanup_failed=true
+    fi
+    if [[ $exit_status == 0 ]]; then
+        if [[ $cleanup_failed == true ]]; then
+            exit_status=1
+        fi
+    fi
+    if [[ $exit_status != 0 ]]; then
+        if ! print_failure_logs; then
+            echo 'No se pudieron mostrar todos los diagnósticos.' >&2
+        fi
+    fi
+    echo "Diagnósticos conservados en: $results_directory"
+    if [[ $exit_status == 0 ]]; then
+        echo "PASS: 105 documentos, 11 WorkUnits, $worker_count workers configurados; ver evidence.json para saber cuáles procesaron trabajo."
+    fi
+    exit "$exit_status"
+}
+
+main() {
+    parse_arguments "$@"
+    check_dependencies
+    prepare_test_environment
+    start_test_services
+    create_test_data
+    run_migration
+    verify_migration
+    if [[ $check_failure == true ]]; then
+        run_failure_test
+    fi
+    verify_resources
+    # El trap EXIT limpia también cuando una etapa falla o se interrumpe.
+}
+
+main "$@"
