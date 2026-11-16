@@ -96,6 +96,47 @@ afterEach(() => {
     vi.resetModules();
 });
 
+describe('numeric default precision', () => {
+    it.each(['9007199254740992', '9007199254740993', '-9007199254740992', '-9007199254740993'])(
+        'rejects unsafe integer default %s at its literal', async literal => {
+            const result = await check(bridge(`value -> value default ${literal}`));
+
+            expect(result.diagnostics).toHaveLength(1);
+            expect(result.diagnostics[0].message).toBe(
+                'Integer default must be a safe integer between -9007199254740991 and 9007199254740991.');
+            expect(result.document.textDocument.getText(result.diagnostics[0].range)).toBe(literal);
+        });
+
+    it.each([
+        '12345678901234567890.123456789', '0.10000000000000001', '-0.10000000000000001',
+        `0.${'0'.repeat(323)}1`, `${'9'.repeat(309)}.0`
+    ])('rejects decimal default that changes when serialized: %s', async literal => {
+        const result = await check(bridge(`value -> value default ${literal}`));
+
+        expect(result.diagnostics).toHaveLength(1);
+        expect(result.diagnostics[0].message).toBe(
+            "Decimal default would lose precision in the execution plan. Use a string default with 'toDecimal' for exact decimal values.");
+        expect(result.document.textDocument.getText(result.diagnostics[0].range)).toBe(literal);
+    });
+
+    it.each([
+        '9007199254740991', '-9007199254740991', '0.1', '12.5000',
+        '-0.0000001', '1000000000000000000000.0', '-0.0', '00012.5000'
+    ])('accepts numeric default whose value survives serialization: %s', async literal => {
+        const result = await check(bridge(`value -> value default ${literal}`));
+
+        expect(result.diagnostics).toEqual([]);
+    });
+
+    it('accepts an exact decimal supplied as a string to toDecimal', async () => {
+        const result = await check(bridge('value -> value using toDecimal default "12345678901234567890.123456789"', {
+            sourceTypes: 'value string'
+        }));
+
+        expect(result.diagnostics).toEqual([]);
+    });
+});
+
 describe('mapping default value validation', () => {
     it.each([
         'status -> status default "ACTIVE"',

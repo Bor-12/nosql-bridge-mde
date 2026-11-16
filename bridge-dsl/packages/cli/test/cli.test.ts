@@ -180,6 +180,27 @@ describe('brg compile', () => {
 
 describe('CLI public commands', () => {
     it.each([
+        ['validate', '9007199254740993', 'Integer default'],
+        ['compile', '9007199254740993', 'Integer default'],
+        ['validate', '12345678901234567890.123456789', 'Decimal default'],
+        ['compile', '12345678901234567890.123456789', 'Decimal default']
+    ])('%s rejects unsafe numeric defaults (%s) without changing the plan', (command, literal, diagnostic) => {
+        const model = readFileSync(path.join(fixtures, 'minimal.brg'), 'utf8')
+            .replace('price -> price', `price -> price default ${literal}`);
+        writeFileSync(path.join(directory, 'numeric.brg'), model);
+        if (command === 'compile') writeFileSync(path.join(directory, 'numeric.plan.json'), 'previous plan');
+
+        const result = run(command, 'numeric.brg');
+
+        expect(result.status).toBe(1);
+        expect(result.stdout).toBe('');
+        expect(result.stderr).toContain(diagnostic);
+        expect(readdirSync(directory).sort()).toEqual(command === 'compile'
+            ? ['numeric.brg', 'numeric.plan.json'] : ['numeric.brg']);
+        if (command === 'compile') expect(readFileSync(path.join(directory, 'numeric.plan.json'), 'utf8')).toBe('previous plan');
+    });
+
+    it.each([
         ['validate', 'uri'], ['compile', 'uri'],
         ['validate', 'futureOperationalSetting'], ['compile', 'futureOperationalSetting']
     ])('%s rejects undeclared connector property %s without generating a plan', (command, property) => {

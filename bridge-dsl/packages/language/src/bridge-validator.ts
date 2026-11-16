@@ -1,5 +1,5 @@
 import type { ValidationAcceptor, ValidationChecks } from 'langium';
-import type { BridgeAstType, BridgeModel, DefaultValue, FieldMapping, FieldPath, Source, SourceTypes, SourceTypeDeclaration, Target } from './generated/ast.js';
+import type { BridgeAstType, BridgeModel, DecimalDefaultValue, DefaultValue, FieldMapping, FieldPath, IntegerDefaultValue, Source, SourceTypes, SourceTypeDeclaration, Target } from './generated/ast.js';
 import type { BridgeServices } from './bridge-module.js';
 import type { ConnectorRoleDescriptor } from './connector-descriptors/connector-descriptor.js';
 import { getConnectorDescriptor } from './connector-descriptors/connector-registry.js';
@@ -24,6 +24,8 @@ export function registerValidationChecks(services: BridgeServices) {
             validator.checkMappingTypes
         ],
         FieldMapping: [validator.checkTransformation],
+        IntegerDefaultValue: [validator.checkNumericDefaultPrecision],
+        DecimalDefaultValue: [validator.checkNumericDefaultPrecision],
         SourceTypes: [validator.checkDuplicateSourceDeclarations],
         SourceTypeDeclaration: [validator.checkDuplicateSourceTypes],
         Source: [validator.checkConnectorRequirements, validator.checkDuplicateConnectorProperties],
@@ -36,6 +38,24 @@ export function registerValidationChecks(services: BridgeServices) {
  * Implementation of custom validations.
  */
 export class BridgeValidator {
+
+    checkNumericDefaultPrecision(value: IntegerDefaultValue | DecimalDefaultValue, accept: ValidationAcceptor): void {
+        if (value.$type === 'IntegerDefaultValue') {
+            if (!Number.isSafeInteger(value.value)) {
+                accept('error', 'Integer default must be a safe integer between -9007199254740991 and 9007199254740991.', {
+                    node: value, property: 'value'
+                });
+            }
+            return;
+        }
+        const literal = value.$cstNode?.text;
+        if (!Number.isFinite(value.value)
+                || (literal !== undefined && normalizeDecimal(literal) !== normalizeDecimal(value.value.toString()))) {
+            accept('error', "Decimal default would lose precision in the execution plan. Use a string default with 'toDecimal' for exact decimal values.", {
+                node: value, property: 'value'
+            });
+        }
+    }
 
     checkTransformation(mapping: FieldMapping, accept: ValidationAcceptor): void {
         if (mapping.transformation !== undefined && !getTransformationDescriptor(mapping.transformation)) {
@@ -349,6 +369,17 @@ export class BridgeValidator {
             previousTargets.push(currentTarget);
         }
     }
+}
+
+// Compare exact decimal values, including scientific notation produced by JSON.
+function normalizeDecimal(literal: string): string {
+    const [mantissa, exponent = '0'] = literal.trim().toLowerCase().split('e');
+    const fractionLength = mantissa.split('.')[1]?.length ?? 0;
+    const coefficient = BigInt(mantissa.replace('.', '')).toString();
+    if (coefficient === '0') return '0';
+    const significant = coefficient.replace(/0+$/, '');
+    const power = Number(exponent) - fractionLength + coefficient.length - significant.length;
+    return `${significant}e${power}`;
 }
 
 function isProperPrefix(parentParts: string[], childParts: string[]): boolean {
