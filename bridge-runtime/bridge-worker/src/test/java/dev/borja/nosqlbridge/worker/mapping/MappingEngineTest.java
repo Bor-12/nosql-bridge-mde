@@ -61,6 +61,91 @@ class MappingEngineTest {
     }
 
     @Test
+    void mergesSiblingAndDeeplyNestedTargets() {
+        LogicalRecord result = engine.map(source, List.of(
+                new MappingPlan("name", "product.name", null, null),
+                new MappingPlan("category.name", "product.category.name", null, null),
+                new MappingPlan("numericText", "product.quantity", "toInteger", null)), "preserve", "drop");
+
+        assertEquals(Map.of("product", new LogicalValue.ObjectValue(Map.of(
+                "name", new LogicalValue.StringValue("Product"),
+                "category", new LogicalValue.ObjectValue(Map.of("name", new LogicalValue.StringValue("Informatica"))),
+                "quantity", new LogicalValue.IntegerValue(25)))), result.fields());
+    }
+
+    @Test
+    void transformsDefaultAtNestedTarget() {
+        LogicalRecord result = engine.map(source,
+                List.of(new MappingPlan("missing", "product.quantity", "toInteger",
+                        new MappingDefaultValue("string", "25"))), "omit", "drop");
+
+        assertEquals(Map.of("product", new LogicalValue.ObjectValue(Map.of(
+                "quantity", new LogicalValue.IntegerValue(25)))), result.fields());
+    }
+
+    @Test
+    void preservesNullAtNestedTarget() {
+        LogicalRecord result = engine.map(source,
+                List.of(new MappingPlan("description", "product.description", null, null)), "preserve", "drop");
+
+        assertEquals(Map.of("product", new LogicalValue.ObjectValue(Map.of(
+                "description", new LogicalValue.NullValue()))), result.fields());
+    }
+
+    @Test
+    void doesNotCreateNestedObjectsForMissingOrOmittedValues() {
+        LogicalRecord result = engine.map(source, List.of(
+                new MappingPlan("missing", "product.name", null, null),
+                new MappingPlan("description", "product.description", null, null)), "omit", "drop");
+
+        assertTrue(result.fields().isEmpty());
+    }
+
+    @Test
+    void mergesNestedTargetWithPreservedObjectWithoutMutatingSource() {
+        LogicalValue.ObjectValue profile = new LogicalValue.ObjectValue(Map.of(
+                "name", new LogicalValue.StringValue("Old name"),
+                "age", new LogicalValue.IntegerValue(30)));
+        LogicalRecord original = new LogicalRecord(Map.of("name", source.get("name"), "profile", profile));
+
+        LogicalRecord result = engine.map(original,
+                List.of(new MappingPlan("name", "profile.name", null, null)), "preserve", "preserve");
+
+        assertEquals(Map.of("profile", new LogicalValue.ObjectValue(Map.of(
+                "name", source.get("name"), "age", new LogicalValue.IntegerValue(30)))), result.fields());
+        assertSame(profile, original.get("profile"));
+        assertEquals(new LogicalValue.StringValue("Old name"), profile.value().get("name"));
+    }
+
+    @Test
+    void nestedTargetOverridesPreservedScalar() {
+        LogicalRecord original = new LogicalRecord(Map.of("name", source.get("name"),
+                "profile", new LogicalValue.StringValue("Old profile")));
+
+        LogicalRecord result = engine.map(original,
+                List.of(new MappingPlan("name", "profile.name", null, null)), "preserve", "preserve");
+
+        assertEquals(Map.of("profile", new LogicalValue.ObjectValue(Map.of(
+                "name", source.get("name")))), result.fields());
+    }
+
+    @Test
+    void preservesAllMappedSiblingsWhenSourceAndTargetShareAnObject() {
+        LogicalValue.ObjectValue profile = new LogicalValue.ObjectValue(Map.of(
+                "name", source.get("name"), "quantity", source.get("numericText"),
+                "unmapped", new LogicalValue.StringValue("Consumed with source object")));
+        LogicalRecord original = new LogicalRecord(Map.of("profile", profile));
+
+        LogicalRecord result = engine.map(original, List.of(
+                new MappingPlan("profile.name", "profile.name", null, null),
+                new MappingPlan("profile.quantity", "profile.quantity", "toInteger", null)), "preserve", "preserve");
+
+        assertEquals(Map.of("profile", new LogicalValue.ObjectValue(Map.of(
+                "name", source.get("name"), "quantity", new LogicalValue.IntegerValue(25)))), result.fields());
+        assertSame(profile, original.get("profile"));
+    }
+
+    @Test
     void mapsMultipleFields() {
         List<MappingPlan> mappings = List.of(
                 new MappingPlan("name", "title", null, null),
@@ -278,12 +363,13 @@ class MappingEngineTest {
     }
 
     @Test
-    void treatsTargetPathAsLiteralFieldName() {
+    void mapsNestedTargetField() {
         LogicalRecord result = engine.map(source,
                 List.of(new MappingPlan("name", "product.name", null, null)), "preserve", "drop");
 
-        assertEquals(new LogicalValue.StringValue("Product"), result.get("product.name"));
-        assertFalse(result.contains("product"));
+        assertEquals(Map.of("product", new LogicalValue.ObjectValue(Map.of(
+                "name", new LogicalValue.StringValue("Product")))), result.fields());
+        assertFalse(result.contains("product.name"));
     }
 
     @Test

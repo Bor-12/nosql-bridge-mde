@@ -36,6 +36,10 @@ public class MappingEngine {
         Map<String, LogicalValue> fields = new HashMap<>();
         if ("preserve".equals(unmappedPolicy)) {
             fields.putAll(source.fields());
+            // Consume source fields before writing targets, so sibling mappings are not removed.
+            for (MappingPlan mapping : mappings) {
+                fields.remove(getTopLevelSourceField(mapping.source()));
+            }
         }
         for (MappingPlan mapping : mappings) {
             boolean correlated = MDC.get("workUnitId") != null;
@@ -43,9 +47,6 @@ public class MappingEngine {
                 MDC.put("sourceField", mapping.source());
                 MDC.put("targetField", mapping.target());
                 MDC.put("transformation", mapping.transformation() == null ? "identity" : mapping.transformation());
-            }
-            if ("preserve".equals(unmappedPolicy)) {
-                fields.remove(getTopLevelSourceField(mapping.source()));
             }
             LogicalValue value = pathResolver.resolve(source, mapping.source());
             if ((value == null || value instanceof LogicalValue.NullValue)
@@ -57,7 +58,7 @@ public class MappingEngine {
                 LogicalValue transformedValue = transformationEngine.transform(
                         mapping.transformation(),
                         value);
-                fields.put(mapping.target(), transformedValue);
+                putTargetValue(fields, mapping.target(), transformedValue);
             }
             if (correlated) {
                 MDC.remove("sourceField");
@@ -66,6 +67,19 @@ public class MappingEngine {
             }
         }
         return new LogicalRecord(fields);
+    }
+
+    private void putTargetValue(Map<String, LogicalValue> fields, String path, LogicalValue value) {
+        int separator = path.indexOf('.');
+        if (separator < 0) {
+            fields.put(path, value);
+            return;
+        }
+        String name = path.substring(0, separator);
+        Map<String, LogicalValue> children = fields.get(name) instanceof LogicalValue.ObjectValue object
+                ? new HashMap<>(object.value()) : new HashMap<>();
+        putTargetValue(children, path.substring(separator + 1), value);
+        fields.put(name, new LogicalValue.ObjectValue(children));
     }
 
     private void validateNullPolicy(String nullPolicy) {
